@@ -17,24 +17,75 @@
 #include <SPIN.h>
 #include "SPI.h"
 #include "ILI9341_t3n.h"
+//#define SPI0_DISP1
+//#define SPI0_DISP2
+//#define SPI1_DISP
+#define SPI1_SDCARD
+//#define SPI2_DISP
 
+#ifdef SPI0_DISP1
 // For the Adafruit shield, these are the default.
 #define TFT_DC  9
 #define TFT_CS 10
-
 // Use hardware SPI (on Uno, #13, #12, #11) and the above for CS/DC
-ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC);
+ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, 2);
+#endif
+#ifdef  SPI0_DISP2
+// For the Adafruit shield, these are the default.
+#define TFT_DC  9
+#define TFT_CS 4 //23
+// Use hardware SPI (on Uno, #13, #12, #11) and the above for CS/DC
+ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, 2);
+#endif
+
+#ifdef SPI1_DISP
+#define TFT_DC 6 // 0xe4
+#define TFT_CS 7 // 0xe5
+#define TFT_SCK 32 //0xe2
+#define TFT_MISO 1 // 0xe3
+#define TFT_MOSI 0 // 0xe1
+#define TFT_RESET 8
+ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, TFT_RESET, TFT_MOSI, TFT_SCK, TFT_MISO, &SPIN1);
+#endif
+
+#ifdef SPI1_SDCARD
+#define TFT_DC 62 // 0xe4
+#define TFT_CS 63 // 0xe5
+#define TFT_SCK 60 //0xe2
+#define TFT_MISO 61 // 0xe3
+#define TFT_MOSI 59 // 0xe1
+#define TFT_RESET 58 // 0xe0
+ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, TFT_RESET, TFT_MOSI, TFT_SCK, TFT_MISO, &SPIN1);
+#endif
+
+#ifdef SPI2_DISP
+#define TFT_DC 55 // 0xe4
+#define TFT_CS 57 // 0xe5
+#define TFT_SCK 53 //0xe2
+#define TFT_MISO 51 // 0xe3
+#define TFT_MOSI 52 // 0xe1
+#define TFT_RESET 56
+ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, TFT_RESET, TFT_MOSI, TFT_SCK, TFT_MISO, &SPIN2);
+#endif
+
 
 void setup() {
+  while (!Serial) ; // wait for Arduino Serial Monitor
+  Serial.begin(9600);
+  delay(500);
+  Serial.println("ILI9341 Test!"); 
+
   tft.begin();
+#ifdef  SPI0_DISP2
+  Serial.println("Reset pin 10 to output");
+//  pinMode(10, INPUT_PULLUP);
+#endif
+  Serial.println("After TFT Begin");
   tft.fillScreen(ILI9341_BLACK);
+  Serial.println(CORE_PIN10_CONFIG, HEX);
   tft.setTextColor(ILI9341_YELLOW);
   tft.setTextSize(2);
   tft.println("Waiting for Arduino Serial Monitor...");
-
-  Serial.begin(9600);
-  while (!Serial) ; // wait for Arduino Serial Monitor
-  Serial.println("ILI9341 Test!"); 
 
   // read diagnostics (optional but can help debug problems)
   uint8_t x = tft.readcommand8(ILI9341_RDMODE);
