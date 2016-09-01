@@ -18,10 +18,12 @@
 #include "SPI.h"
 #include "ILI9341_t3n.h"
 //#define SPI0_DISP1
+
+
 //#define SPI0_DISP2
 //#define SPI1_DISP
-#define SPI1_SDCARD
-//#define SPI2_DISP
+//#define SPI1_SDCARD
+#define SPI2_DISP
 
 #ifdef SPI0_DISP1
 // For the Adafruit shield, these are the default.
@@ -59,12 +61,12 @@ ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, TFT_RESET, TFT_MOSI, TFT_SCK, TFT_
 #endif
 
 #ifdef SPI2_DISP
-#define TFT_DC 55 // 0xe4
-#define TFT_CS 57 // 0xe5
-#define TFT_SCK 53 //0xe2
-#define TFT_MISO 51 // 0xe3
-#define TFT_MOSI 52 // 0xe1
-#define TFT_RESET 56
+#define TFT_DC 43 // 55 // 0xe4
+#define TFT_CS 42 //57 // 0xe5
+#define TFT_SCK 46 //53 //0xe2
+#define TFT_MISO 45 //51 // 0xe3
+#define TFT_MOSI 44 // 52 // 0xe1
+#define TFT_RESET 8
 ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, TFT_RESET, TFT_MOSI, TFT_SCK, TFT_MISO, &SPIN2);
 #endif
 
