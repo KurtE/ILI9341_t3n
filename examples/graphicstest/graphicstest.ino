@@ -21,9 +21,10 @@
 
 
 //#define SPI0_DISP2
+#define SPI0_DISP3
 //#define SPI1_DISP
 //#define SPI1_SDCARD
-#define SPI2_DISP
+//#define SPI2_DISP
 
 #ifdef SPI0_DISP1
 // For the Adafruit shield, these are the default.
@@ -39,7 +40,10 @@ ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, 2);
 // Use hardware SPI (on Uno, #13, #12, #11) and the above for CS/DC
 ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, 2);
 #endif
-
+#ifdef  SPI0_DISP3
+// Defragsters...
+ILI9341_t3n tft = ILI9341_t3n(10, 20, 8, 11, 14, 12);
+#endif
 #ifdef SPI1_DISP
 #define TFT_DC 6 // 0xe4
 #define TFT_CS 7 // 0xe5
