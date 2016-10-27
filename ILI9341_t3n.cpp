@@ -51,7 +51,67 @@ ILI9341_t3n::ILI9341_t3n(uint8_t cs, uint8_t dc, uint8_t rst,
     _cspinmask = 0;
     _csport = NULL;
 
+    _pfbtft = NULL;	
+    _use_fbtft = 0;						// Are we in frame buffer mode?
+
+
 }
+
+//=======================================================================
+// Add optinal support for using frame buffer to speed up complex outputs
+//=======================================================================
+uint8_t ILI9341_t3n::useFBTFT(boolean b)		// use the frame buffer?  First call will allocate
+{
+	if (b) {
+		// First see if we need to allocate buffer
+		if (_pfbtft == NULL) {
+			_pfbtft = (uint16_t *)malloc(ILI9341_TFTHEIGHT*ILI9341_TFTWIDTH*2);
+			if (_pfbtft == NULL)
+				return 0;	// failed 
+			memset(_pfbtft, 0, ILI9341_TFTHEIGHT*ILI9341_TFTWIDTH*2);	
+		}
+		_use_fbtft = 1;
+	} else 
+		_use_fbtft = 0;
+
+	return _use_fbtft;	
+
+}
+
+void ILI9341_t3n::freeFBTFT(void)						// explicit call to release the buffer
+{
+	if (_pfbtft != NULL) {
+		free(_pfbtft);
+		_pfbtft = NULL;
+		_use_fbtft = 0;	// make sure the use is turned off
+	}
+}
+void ILI9341_t3n::updateScreen(void)					// call to say update the screen now.
+{
+	// Not sure if better here to check flag or check existence of buffer.
+	// Will go by buffer as maybe can do interesting things?
+	if (_pfbtft != NULL) {
+		beginSPITransaction();
+		setAddr(0, 0, _width-1, _height-1);
+		writecommand_cont(ILI9341_RAMWR);
+
+		// BUGBUG doing as one shot.  Not sure if should or not or do like
+		// main code and break up into transactions...
+		uint16_t *pfbtft_end = &_pfbtft[(ILI9341_TFTWIDTH*ILI9341_TFTHEIGHT)-1];	// setup 
+		uint16_t *pftbft = _pfbtft;
+
+		// Quick write out the data;
+		while (pftbft < pfbtft_end) {
+			writedata16_cont(*pftbft++);
+		}
+		writedata16_last(*pftbft);
+		endSPITransaction();
+	}
+
+}			 
+
+//=======================================================================
+
 
 void ILI9341_t3n::setAddrWindow(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1)
 {
@@ -72,11 +132,16 @@ void ILI9341_t3n::drawPixel(int16_t x, int16_t y, uint16_t color) {
 
 	if((x < 0) ||(x >= _width) || (y < 0) || (y >= _height)) return;
 
-	beginSPITransaction();
-	setAddr(x, y, x, y);
-	writecommand_cont(ILI9341_RAMWR);
-	writedata16_last(color);
-	endSPITransaction();
+	if (_use_fbtft) {
+		_pfbtft[y*_width + x] = color;
+
+	} else {
+		beginSPITransaction();
+		setAddr(x, y, x, y);
+		writecommand_cont(ILI9341_RAMWR);
+		writedata16_last(color);
+		endSPITransaction();
+	}
 }
 
 void ILI9341_t3n::drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t color)
@@ -84,14 +149,22 @@ void ILI9341_t3n::drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t color)
 	// Rudimentary clipping
 	if((x >= _width) || (y >= _height)) return;
 	if((y+h-1) >= _height) h = _height-y;
-	beginSPITransaction();
-	setAddr(x, y, x, y+h-1);
-	writecommand_cont(ILI9341_RAMWR);
-	while (h-- > 1) {
-		writedata16_cont(color);
+	if (_use_fbtft) {
+		int screen_index = y*_width + x;
+		for (;h>0; h--) {
+			_pfbtft[screen_index] = color;
+			screen_index += _width;
+		}
+	} else {
+		beginSPITransaction();
+		setAddr(x, y, x, y+h-1);
+		writecommand_cont(ILI9341_RAMWR);
+		while (h-- > 1) {
+			writedata16_cont(color);
+		}
+		writedata16_last(color);
+		endSPITransaction();
 	}
-	writedata16_last(color);
-	endSPITransaction();
 }
 
 void ILI9341_t3n::drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color)
@@ -99,14 +172,21 @@ void ILI9341_t3n::drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color)
 	// Rudimentary clipping
 	if((x >= _width) || (y >= _height)) return;
 	if((x+w-1) >= _width)  w = _width-x;
-	beginSPITransaction();
-	setAddr(x, y, x+w-1, y);
-	writecommand_cont(ILI9341_RAMWR);
-	while (w-- > 1) {
-		writedata16_cont(color);
+	if (_use_fbtft) {
+		int screen_index = y*_width + x;
+		while (w-- > 1) {
+			_pfbtft[screen_index++] = color;
+		}
+	} else {
+		beginSPITransaction();
+		setAddr(x, y, x+w-1, y);
+		writecommand_cont(ILI9341_RAMWR);
+		while (w-- > 1) {
+			writedata16_cont(color);
+		}
+		writedata16_last(color);
+		endSPITransaction();
 	}
-	writedata16_last(color);
-	endSPITransaction();
 }
 
 void ILI9341_t3n::fillScreen(uint16_t color)
@@ -122,23 +202,35 @@ void ILI9341_t3n::fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 	if((x + w - 1) >= _width)  w = _width  - x;
 	if((y + h - 1) >= _height) h = _height - y;
 
-	// TODO: this can result in a very long transaction time
-	// should break this into multiple transactions, even though
-	// it'll cost more overhead, so we don't stall other SPI libs
-	beginSPITransaction();
-	setAddr(x, y, x+w-1, y+h-1);
-	writecommand_cont(ILI9341_RAMWR);
-	for(y=h; y>0; y--) {
-		for(x=w; x>1; x--) {
-			writedata16_cont(color);
+	if (_use_fbtft) {
+	    int screen_index_row = y*_width + x;
+		for (;h>0; h--) {
+			int screen_index = screen_index_row;
+			for (int i = 0 ;i < w; i++) {
+				_pfbtft[screen_index++] = color;
+			}
+			screen_index_row += _width;
 		}
-		writedata16_last(color);
-		if (y > 1 && (y & 1)) {
-			endSPITransaction();
-			beginSPITransaction();
+	} else {
+
+		// TODO: this can result in a very long transaction time
+		// should break this into multiple transactions, even though
+		// it'll cost more overhead, so we don't stall other SPI libs
+		beginSPITransaction();
+		setAddr(x, y, x+w-1, y+h-1);
+		writecommand_cont(ILI9341_RAMWR);
+		for(y=h; y>0; y--) {
+			for(x=w; x>1; x--) {
+				writedata16_cont(color);
+			}
+			writedata16_last(color);
+			if (y > 1 && (y & 1)) {
+				endSPITransaction();
+				beginSPITransaction();
+			}
 		}
+		endSPITransaction();
 	}
-	endSPITransaction();
 }
 
 

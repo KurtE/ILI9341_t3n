@@ -23,7 +23,8 @@
 //#define SPI0_DISP2
 //#define SPI0_DISP3
 //#define SPI0_DISP4
-#define SPI0_DISP5
+//#define SPI0_DISP5
+#define SPI0_DISP6   // match franks...
 //#define SPI1_DISP
 //#define SPI1_SDCARD
 //#define SPI2_DISP
@@ -68,6 +69,17 @@ ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, TFT_RST, TFT_MOSI, TFT_SCK, TFT_MI
 #define TFT_SCK 27
 #define TFT_MISO 39
 #define TFT_MOSI 28
+ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, TFT_RST, TFT_MOSI, TFT_SCK, TFT_MISO, &SPIN);
+#endif
+// Franks setup
+#ifdef SPI0_DISP6
+#define TFT_DC  15
+#define TFT_CS 10
+#define TFT_RST 4
+
+#define TFT_SCK 13
+#define TFT_MISO 12
+#define TFT_MOSI 11
 ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, TFT_RST, TFT_MOSI, TFT_SCK, TFT_MISO, &SPIN);
 #endif
 
@@ -180,10 +192,31 @@ void setup() {
 
   Serial.print(F("Rounded rects (filled)   "));
   Serial.println(testFilledRoundRects());
+
+  WaitForUserInput();
+  
+  Serial.print(F("Rectangles (filled) FB     "));
+  Serial.println(testFilledRectsFB(ILI9341_YELLOW, ILI9341_MAGENTA));
   delay(200);
 
-  Serial.println(F("Done!"));
+  WaitForUserInput();
+  
+  Serial.print(F("Rounded rects (filled) FB   "));
+  Serial.println(testFilledRoundRectsFB());
+  delay(200);
+  tft.useFBTFT(0);  // turn back off
 
+  WaitForUserInput();
+
+  
+}
+
+void WaitForUserInput() {
+  Serial.println("Hit key to continue");
+  while (Serial.read() == -1) ;
+  while (Serial.read() != -1) ;
+  Serial.println(F("Done!"));
+  
 }
 
 
@@ -433,5 +466,45 @@ unsigned long testFilledRoundRects() {
     tft.fillRoundRect(cx-i2, cy-i2, i, i, i/8, tft.color565(0, i, 0));
   }
 
+  return micros() - start;
+}
+
+unsigned long testFilledRectsFB(uint16_t color1, uint16_t color2) {
+  unsigned long start, t = 0;
+  int           n, i, i2,
+                cx = tft.width()  / 2 - 1,
+                cy = tft.height() / 2 - 1;
+
+  tft.useFBTFT(1);
+  tft.fillScreen(ILI9341_BLACK);
+  start = micros();
+  n = min(tft.width(), tft.height());
+  for(i=n; i>0; i-=6) {
+    i2    = i / 2;
+    tft.fillRect(cx-i2, cy-i2, i, i, color1);
+    t    += micros() - start;
+    // Outlines are not included in timing results
+    tft.drawRect(cx-i2, cy-i2, i, i, color2);
+  }
+  tft.updateScreen();
+
+  return micros() - start;
+}
+
+
+unsigned long testFilledRoundRectsFB() {
+  unsigned long start;
+  int           i, i2,
+                cx = tft.width()  / 2 - 1,
+                cy = tft.height() / 2 - 1;
+  tft.useFBTFT(1);
+  
+  tft.fillScreen(ILI9341_BLACK);
+  start = micros();
+  for(i=min(tft.width(), tft.height()); i>20; i-=6) {
+    i2 = i / 2;
+    tft.fillRoundRect(cx-i2, cy-i2, i, i, i/8, tft.color565(0, i, 0));
+  }
+  tft.updateScreen();
   return micros() - start;
 }

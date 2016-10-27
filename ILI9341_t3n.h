@@ -198,6 +198,11 @@ class ILI9341_t3n : public Print
 	void setFontAdafruit(void) { font = NULL; }
 	void drawFontChar(unsigned int c);
 
+	// added support to use optional Frame buffer
+	uint8_t useFBTFT(boolean b);		// use the frame buffer?  First call will allocate
+	void	freeFBTFT(void);			// explicit call to release the buffer
+	void	updateScreen(void);			// call to say update the screen now. 
+
 
  protected:
  	SPINClass *_pspin;
@@ -217,6 +222,10 @@ class ILI9341_t3n : public Print
 	// add support to allow only one hardware CS (used for dc)
     uint8_t _cspinmask;
     volatile uint8_t *_csport;
+
+    // Add support for optional frame buffer
+    uint16_t	*_pfbtft;						// Optional Frame buffer 
+    uint8_t		_use_fbtft;						// Are we in frame buffer mode?
 
 
 	void setAddr(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1)
