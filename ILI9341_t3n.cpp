@@ -150,10 +150,10 @@ void ILI9341_t3n::drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t color)
 	if((x >= _width) || (y >= _height)) return;
 	if((y+h-1) >= _height) h = _height-y;
 	if (_use_fbtft) {
-		int screen_index = y*_width + x;
+		uint16_t * pfbPixel = &_pfbtft[ y*_width + x];
 		for (;h>0; h--) {
-			_pfbtft[screen_index] = color;
-			screen_index += _width;
+			*pfbPixel = color;
+			pfbPixel += _width;
 		}
 	} else {
 		beginSPITransaction();
@@ -173,9 +173,9 @@ void ILI9341_t3n::drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color)
 	if((x >= _width) || (y >= _height)) return;
 	if((x+w-1) >= _width)  w = _width-x;
 	if (_use_fbtft) {
-		int screen_index = y*_width + x;
+		uint16_t * pfbPixel = &_pfbtft[ y*_width + x];
 		while (w-- > 1) {
-			_pfbtft[screen_index++] = color;
+			*pfbPixel++ = color;
 		}
 	} else {
 		beginSPITransaction();
@@ -191,7 +191,16 @@ void ILI9341_t3n::drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color)
 
 void ILI9341_t3n::fillScreen(uint16_t color)
 {
-	fillRect(0, 0, _width, _height, color);
+	if (_use_fbtft) {
+		uint16_t *pfbPixel = _pfbtft;
+		uint16_t *pfbtft_end = &_pfbtft[(ILI9341_TFTWIDTH*ILI9341_TFTHEIGHT)];	// setup 
+		while (pfbPixel < pfbtft_end) {
+			*pfbPixel++ = color;
+		}
+
+	} else {
+		fillRect(0, 0, _width, _height, color);
+	}
 }
 
 // fill a rectangle
@@ -203,13 +212,13 @@ void ILI9341_t3n::fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 	if((y + h - 1) >= _height) h = _height - y;
 
 	if (_use_fbtft) {
-	    int screen_index_row = y*_width + x;
+		uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
 		for (;h>0; h--) {
-			int screen_index = screen_index_row;
+			uint16_t * pfbPixel = pfbPixel_row;
 			for (int i = 0 ;i < w; i++) {
-				_pfbtft[screen_index++] = color;
+				*pfbPixel++ = color;
 			}
-			screen_index_row += _width;
+			pfbPixel_row += _width;
 		}
 	} else {
 
