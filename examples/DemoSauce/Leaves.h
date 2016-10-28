@@ -19,19 +19,19 @@ class Leaves : public BaseAnimation {
 public:
 	Leaves() : BaseAnimation() {};
 
-	void init( ILI9341_t3 tft );
+	void init( ILI9341_t3n tft );
 	uint_fast16_t bgColor( void );
 	String title();
-	void perFrame( ILI9341_t3 tft, FrameParams frameParams );
+	void perFrame( ILI9341_t3n tft, FrameParams frameParams );
 
 private:
-  void _drawLeaves( ILI9341_t3 tft, boolean doErase, uint_fast8_t iter, float radius, float spin, float x, float y, uint_fast16_t solidColor, uint_fast16_t outlineColor );
+  void _drawLeaves( ILI9341_t3n tft, boolean doErase, uint_fast8_t iter, float radius, float spin, float x, float y, uint_fast16_t solidColor, uint_fast16_t outlineColor );
 
   float _phase = 0;
   uint_fast16_t _bgColor;
 };
 
-void Leaves::init( ILI9341_t3 tft ) {
+void Leaves::init( ILI9341_t3n tft ) {
   _bgColor = 0x780f;
 }
 
@@ -43,7 +43,7 @@ String Leaves::title() {
 	return "Leaves";
 }
 
-void Leaves::_drawLeaves( ILI9341_t3 tft, boolean doErase, uint_fast8_t iter, float radius, float spin, float x, float y, uint_fast16_t solidColor, uint_fast16_t outlineColor ) {
+void Leaves::_drawLeaves( ILI9341_t3n tft, boolean doErase, uint_fast8_t iter, float radius, float spin, float x, float y, uint_fast16_t solidColor, uint_fast16_t outlineColor ) {
   float radius_2 = radius * 0.5;
   float angle = M_PI + (spin * (iter+0.7));
   for( uint_fast8_t i=0; i<3; i++ ) {
@@ -60,7 +60,7 @@ void Leaves::_drawLeaves( ILI9341_t3 tft, boolean doErase, uint_fast8_t iter, fl
   }
 }
 
-void Leaves::perFrame( ILI9341_t3 tft, FrameParams frameParams ) {
+void Leaves::perFrame( ILI9341_t3n tft, FrameParams frameParams ) {
   uint_fast16_t w = tft.width();
   uint_fast16_t h = tft.height();
 

@@ -1,5 +1,5 @@
 {
-  "name": "ILI9341_t3",
+  "name": "ILI9341_t3n",
   "keywords": "display, tft, lcd, graphics, spi",
   "description": "Optimized ILI9341 (320x240 Color TFT) Display",
   "authors": [
@@ -21,7 +21,7 @@
   "repository":
   {
     "type": "git",
-    "url": "https://github.com/PaulStoffregen/ILI9341_t3.git"
+    "url": "https://github.com/KurtE/ILI9341_t3n.git"
   },
   "frameworks": "arduino",
   "platforms": "*"

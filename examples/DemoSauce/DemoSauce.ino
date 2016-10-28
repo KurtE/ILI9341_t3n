@@ -15,9 +15,9 @@
  ****************************************************/
 
 // https://github.com/zkarcher/demosauce
-
-#include "SPI.h"
-#include "ili9341_t3n.h"
+#include <SPIN.h>
+#include <SPI.h>
+#include <ILI9341_t3n.h>
 #include "font_Arial.h"
 
 #include "FrameParams.h"
@@ -59,7 +59,7 @@ const uint8_t MIC_PIN = 14;
 const uint8_t BACKLIGHT_PIN = 23;
 
 // Use hardware SPI (#13, #12, #11) and the above for CS/DC
-ILI9341_t3 tft = ILI9341_t3(TFT_CS, TFT_DC);
+ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC);
 FrameParams frameParams;
 long previousMillis = 0;
 

@@ -31,7 +31,7 @@ TouchScreen ts = TouchScreen(XP, YP, XM, YM, 300);
 
 #define TFT_CS 10
 #define TFT_DC  9
-ILI9341_t3 tft = ILI9341_t3(TFT_CS, TFT_DC);
+ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC);
 
 boolean RecordOn = false;
 

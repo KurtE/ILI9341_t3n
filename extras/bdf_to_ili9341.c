@@ -1,4 +1,4 @@
-/* Convert BDF format font data to ILI9341_t3 packed format
+/* Convert BDF format font data to ILI9341_t3n packed format
    Copyright 2015 - Paul Stoffregen <paul@pjrc.com>
 
    This program is free software: you can redistribute it and/or modify

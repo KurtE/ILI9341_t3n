@@ -20,13 +20,13 @@ class Sphere3D : public BaseAnimation {
 public:
 	Sphere3D() : BaseAnimation() {};
 
-	void init( ILI9341_t3 tft );
+	void init( ILI9341_t3n tft );
 	uint_fast16_t bgColor( void );
 	String title();
-	void perFrame( ILI9341_t3 tft, FrameParams frameParams );
+	void perFrame( ILI9341_t3n tft, FrameParams frameParams );
 
 private:
-  void _drawLine( ILI9341_t3 tft, float cosTilt, float sinTilt, float x, float y, float z, uint_fast16_t w_2, uint_fast16_t h_2, uint_fast16_t color );
+  void _drawLine( ILI9341_t3n tft, float cosTilt, float sinTilt, float x, float y, float z, uint_fast16_t w_2, uint_fast16_t h_2, uint_fast16_t color );
 
   float _rotatePhase = 0;
   uint_fast16_t _baseCircSize = 0;
@@ -36,7 +36,7 @@ private:
   uint_fast16_t _bgColor;
 };
 
-void Sphere3D::init( ILI9341_t3 tft ) {
+void Sphere3D::init( ILI9341_t3n tft ) {
   uint_fast16_t w = tft.width();
   uint_fast16_t h = tft.height();
 
@@ -55,7 +55,7 @@ String Sphere3D::title() {
 	return "Sphere3D";
 }
 
-void Sphere3D::_drawLine( ILI9341_t3 tft, float cosTilt, float sinTilt, float x, float y, float z, uint_fast16_t w_2, uint_fast16_t h_2, uint_fast16_t color ) {
+void Sphere3D::_drawLine( ILI9341_t3n tft, float cosTilt, float sinTilt, float x, float y, float z, uint_fast16_t w_2, uint_fast16_t h_2, uint_fast16_t color ) {
   // Tilt!
   float tempY = y;
   y = tempY*cosTilt + z*sinTilt;
@@ -73,7 +73,7 @@ void Sphere3D::_drawLine( ILI9341_t3 tft, float cosTilt, float sinTilt, float x,
 
 }
 
-void Sphere3D::perFrame( ILI9341_t3 tft, FrameParams frameParams ) {
+void Sphere3D::perFrame( ILI9341_t3n tft, FrameParams frameParams ) {
   uint_fast16_t w = (uint_fast16_t)tft.width();
   uint_fast16_t h = (uint_fast16_t)tft.height();
 
