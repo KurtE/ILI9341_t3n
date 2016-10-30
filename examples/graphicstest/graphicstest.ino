@@ -17,14 +17,14 @@
 #include <SPIN.h>
 #include "SPI.h"
 #include "ILI9341_t3n.h"
-//#define SPI0_DISP1
+#define SPI0_DISP1
 
 
 //#define SPI0_DISP2
 //#define SPI0_DISP3
 //#define SPI0_DISP4
 //#define SPI0_DISP5
-#define SPI0_DISP6   // match franks...
+//#define SPI0_DISP6   // match franks...
 //#define SPI1_DISP
 //#define SPI1_SDCARD
 //#define SPI2_DISP
