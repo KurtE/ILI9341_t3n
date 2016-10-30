@@ -90,7 +90,7 @@ void ILI9341_t3n::updateScreen(void)					// call to say update the screen now.
 {
 	// Not sure if better here to check flag or check existence of buffer.
 	// Will go by buffer as maybe can do interesting things?
-	if (_pfbtft != NULL) {
+	if (_use_fbtft) {
 		beginSPITransaction();
 		setAddr(0, 0, _width-1, _height-1);
 		writecommand_cont(ILI9341_RAMWR);
@@ -151,7 +151,7 @@ void ILI9341_t3n::drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t color)
 	if((y+h-1) >= _height) h = _height-y;
 	if (_use_fbtft) {
 		uint16_t * pfbPixel = &_pfbtft[ y*_width + x];
-		for (;h>0; h--) {
+		while (h--) {
 			*pfbPixel = color;
 			pfbPixel += _width;
 		}
@@ -173,9 +173,19 @@ void ILI9341_t3n::drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color)
 	if((x >= _width) || (y >= _height)) return;
 	if((x+w-1) >= _width)  w = _width-x;
 	if (_use_fbtft) {
-		uint16_t * pfbPixel = &_pfbtft[ y*_width + x];
-		while (w-- > 1) {
-			*pfbPixel++ = color;
+		if ((x&1) || (w&1)) {
+			uint16_t * pfbPixel = &_pfbtft[ y*_width + x];
+			while (w--) {
+				*pfbPixel++ = color;
+			}
+		} else {
+			// X is even and so is w, try 32 bit writes..
+			uint32_t color32 = (color << 16) | color;
+			uint32_t * pfbPixel = (uint32_t*)((uint16_t*)&_pfbtft[ y*_width + x]);
+			while (w) {
+				*pfbPixel++ = color32;
+				w -= 2;
+			}
 		}
 	} else {
 		beginSPITransaction();
@@ -192,10 +202,20 @@ void ILI9341_t3n::drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color)
 void ILI9341_t3n::fillScreen(uint16_t color)
 {
 	if (_use_fbtft) {
-		uint16_t *pfbPixel = _pfbtft;
-		uint16_t *pfbtft_end = &_pfbtft[(ILI9341_TFTWIDTH*ILI9341_TFTHEIGHT)];	// setup 
+		// Speed up lifted from Franks DMA code... 
+		uint32_t color32 = (color << 16) | color;
+
+		uint32_t *pfbPixel = (uint32_t *)_pfbtft;
+		uint32_t *pfbtft_end = (uint32_t *)((uint16_t *)&_pfbtft[(ILI9341_TFTWIDTH * ILI9341_TFTHEIGHT)]); // setup
 		while (pfbPixel < pfbtft_end) {
-			*pfbPixel++ = color;
+			*pfbPixel++ = color32; *pfbPixel++ = color32; *pfbPixel++ = color32;*pfbPixel++ = color32;
+			*pfbPixel++ = color32; *pfbPixel++ = color32; *pfbPixel++ = color32;*pfbPixel++ = color32;
+			*pfbPixel++ = color32; *pfbPixel++ = color32; *pfbPixel++ = color32;*pfbPixel++ = color32;
+			*pfbPixel++ = color32; *pfbPixel++ = color32; *pfbPixel++ = color32;*pfbPixel++ = color32;
+			*pfbPixel++ = color32; *pfbPixel++ = color32; *pfbPixel++ = color32;*pfbPixel++ = color32;
+			*pfbPixel++ = color32; *pfbPixel++ = color32; *pfbPixel++ = color32;*pfbPixel++ = color32;
+			*pfbPixel++ = color32; *pfbPixel++ = color32; *pfbPixel++ = color32;*pfbPixel++ = color32;
+			*pfbPixel++ = color32; *pfbPixel++ = color32; *pfbPixel++ = color32;*pfbPixel++ = color32;
 		}
 
 	} else {
@@ -212,13 +232,27 @@ void ILI9341_t3n::fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 	if((y + h - 1) >= _height) h = _height - y;
 
 	if (_use_fbtft) {
-		uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
-		for (;h>0; h--) {
-			uint16_t * pfbPixel = pfbPixel_row;
-			for (int i = 0 ;i < w; i++) {
-				*pfbPixel++ = color;
+		if ((x&1) || (w&1)) {
+			uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
+			for (;h>0; h--) {
+				uint16_t * pfbPixel = pfbPixel_row;
+				for (int i = 0 ;i < w; i++) {
+					*pfbPixel++ = color;
+				}
+				pfbPixel_row += _width;
 			}
-			pfbPixel_row += _width;
+		} else {
+			// Horizontal is even number so try 32 bit writes instead
+			uint32_t color32 = (color << 16) | color;
+			uint32_t * pfbPixel_row = (uint32_t *)((uint16_t*)&_pfbtft[ y*_width + x]);
+			w = w/2;	// only iterate half the times
+			for (;h>0; h--) {
+				uint32_t * pfbPixel = pfbPixel_row;
+				for (int i = 0 ;i < w; i++) {
+					*pfbPixel++ = color32;
+				}
+				pfbPixel_row += (_width/2);
+			}
 		}
 	} else {
 
@@ -447,6 +481,11 @@ uint8_t ILI9341_t3n::readcommand8(uint8_t c, uint8_t index)
 // Read Pixel at x,y and get back 16-bit packed color
 uint16_t ILI9341_t3n::readPixel(int16_t x, int16_t y)
 {
+	// Now if we are in buffer mode can return real fast
+	if (_use_fbtft) {
+		return _pfbtft[y*_width + x] ;
+	}
+
 	uint8_t dummy __attribute__((unused));
 	uint8_t r,g,b;
 
@@ -481,6 +520,19 @@ uint16_t ILI9341_t3n::readPixel(int16_t x, int16_t y)
 // Now lets see if we can read in multiple pixels
 void ILI9341_t3n::readRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t *pcolors)
 {
+	if (_use_fbtft) {
+		uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
+		for (;h>0; h--) {
+			uint16_t * pfbPixel = pfbPixel_row;
+			for (int i = 0 ;i < w; i++) {
+				*pcolors++ = *pfbPixel++;
+			}
+			pfbPixel_row += _width;
+		}
+		return;	
+	}
+	
+
 	uint8_t dummy __attribute__((unused));
 	uint8_t r,g,b;
 	uint16_t c = w * h;
@@ -531,6 +583,18 @@ void ILI9341_t3n::readRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 // Now lets see if we can writemultiple pixels
 void ILI9341_t3n::writeRect(int16_t x, int16_t y, int16_t w, int16_t h, const uint16_t *pcolors)
 {
+	if (_use_fbtft) {
+		uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
+		for (;h>0; h--) {
+			uint16_t * pfbPixel = pfbPixel_row;
+			for (int i = 0 ;i < w; i++) {
+				*pfbPixel++ = *pcolors++;
+			}
+			pfbPixel_row += _width;
+		}
+		return;	
+	}
+
    	beginSPITransaction();
 	setAddr(x, y, x+w-1, y+h-1);
 	writecommand_cont(ILI9341_RAMWR);
