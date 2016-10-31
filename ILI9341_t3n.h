@@ -280,6 +280,10 @@ class ILI9341_t3n : public Print
 	  		drawFastHLine(x, y, w, color);
 	  		return;
 	  	}
+	  	if((x >= _width) || (y >= _height) || (y < 0)) return;
+		if(x < 0) {	w += x; x = 0; 	}
+		if((x+w-1) >= _width)  w = _width-x;
+
 		setAddr(x, y, x+w-1, y);
 		writecommand_cont(ILI9341_RAMWR);
 		do { writedata16_cont(color); } while (--w > 0);
@@ -290,12 +294,16 @@ class ILI9341_t3n : public Print
 	  		drawFastVLine(x, y, h, color);
 	  		return;
 	  	}
+		if((x >= _width) || (x < 0) || (y >= _height)) return;
+		if(y < 0) {	h += y; y = 0; 	}
+		if((y+h-1) >= _height) h = _height-y;
 		setAddr(x, y, x, y+h-1);
 		writecommand_cont(ILI9341_RAMWR);
 		do { writedata16_cont(color); } while (--h > 0);
 	}
 	void Pixel(int16_t x, int16_t y, uint16_t color)
 	  __attribute__((always_inline)) {
+		if((x >= _width) || (x < 0) || (y >= _height) || (y < 0)) return;
 	  	if (_use_fbtft) {
 	  		_pfbtft[y*_width + x] = color;
 	  		return;
