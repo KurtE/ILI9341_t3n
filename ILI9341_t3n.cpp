@@ -147,7 +147,8 @@ void ILI9341_t3n::drawPixel(int16_t x, int16_t y, uint16_t color) {
 void ILI9341_t3n::drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t color)
 {
 	// Rudimentary clipping
-	if((x >= _width) || (y >= _height)) return;
+	if((x >= _width) || (x < 0) || (y >= _height)) return;
+	if(y < 0) {	h += y; y = 0; 	}
 	if((y+h-1) >= _height) h = _height-y;
 	if (_use_fbtft) {
 		uint16_t * pfbPixel = &_pfbtft[ y*_width + x];
@@ -170,7 +171,8 @@ void ILI9341_t3n::drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t color)
 void ILI9341_t3n::drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color)
 {
 	// Rudimentary clipping
-	if((x >= _width) || (y >= _height)) return;
+	if((x >= _width) || (y >= _height) || (y < 0)) return;
+	if(x < 0) {	w += x; x = 0; 	}
 	if((x+w-1) >= _width)  w = _width-x;
 	if (_use_fbtft) {
 		if ((x&1) || (w&1)) {
@@ -228,6 +230,8 @@ void ILI9341_t3n::fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 {
 	// rudimentary clipping (drawChar w/big text requires this)
 	if((x >= _width) || (y >= _height)) return;
+	if(x < 0) {	w += x; x = 0; 	}
+	if(y < 0) {	h += y; y = 0; 	}
 	if((x + w - 1) >= _width)  w = _width  - x;
 	if((y + h - 1) >= _height) h = _height - y;
 
