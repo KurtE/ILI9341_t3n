@@ -55,3 +55,7 @@ press	KEYWORD2
 isPressed	KEYWORD2
 justPressed	KEYWORD2
 justReleased	KEYWORD2
+useFBTFT	KEYWORD2
+updateScreen	KEYWORD2
+freeFBTFT	KEYWORD2
+

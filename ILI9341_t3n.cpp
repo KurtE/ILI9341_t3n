@@ -951,13 +951,20 @@ void ILI9341_t3n::drawLine(int16_t x0, int16_t y0,
 // Draw a rectangle
 void ILI9341_t3n::drawRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color)
 {
-	beginSPITransaction();
-	HLine(x, y, w, color);
-	HLine(x, y+h-1, w, color);
-	VLine(x, y, h, color);
-	VLine(x+w-1, y, h, color);
-	writecommand_last(ILI9341_NOP);
-	endSPITransaction();
+	if (_use_fbtft) {
+		drawFastHLine(x, y, w, color);
+		drawFastHLine(x, y+h-1, w, color);
+		drawFastVLine(x, y, h, color);
+		drawFastVLine(x+w-1, y, h, color);
+	} else {
+	    beginSPITransaction();
+		HLine(x, y, w, color);
+		HLine(x, y+h-1, w, color);
+		VLine(x, y, h, color);
+		VLine(x+w-1, y, h, color);
+		writecommand_last(ILI9341_NOP);
+		endSPITransaction();
+	}
 }
 
 // Draw a rounded rectangle
@@ -1406,52 +1413,71 @@ void ILI9341_t3n::drawFontBits(uint32_t bits, uint32_t numbits, uint32_t x, uint
 #endif
 #if 1
 	if (bits == 0) return;
-	beginSPITransaction();
-	int w = 0;
-	do {
-		uint32_t x1 = x;
-		uint32_t n = numbits;		
-		
-		writecommand_cont(ILI9341_PASET); // Row addr set
-		writedata16_cont(y);   // YSTART
-		writedata16_cont(y);   // YEND	
-		
+	if (_use_fbtft) {
+		uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
 		do {
-			n--;
-			if (bits & (1 << n)) {
-				w++;
-			}
-			else if (w > 0) {
-				// "drawFastHLine(x1 - w, y, w, textcolor)"
-				writecommand_cont(ILI9341_CASET); // Column addr set
-				writedata16_cont(x1 - w);   // XSTART
-				writedata16_cont(x1);   // XEND					
-				writecommand_cont(ILI9341_RAMWR);
-				while (w-- > 1) { // draw line
-					writedata16_cont(textcolor);
+			uint16_t * pfbPixel = pfbPixel_row;
+			uint32_t n = numbits;
+			do {
+				n--;
+				if (bits & (1 << n)) {
+					*pfbPixel = textcolor;
 				}
-				writedata16_last(textcolor);
-			}
-						
-			x1++;
-		} while (n > 0);
+				pfbPixel++;
+			} while (n > 0);
 
-		if (w > 0) {
-				// "drawFastHLine(x1 - w, y, w, textcolor)"
-				writecommand_cont(ILI9341_CASET); // Column addr set
-				writedata16_cont(x1 - w);   // XSTART
-				writedata16_cont(x1);   // XEND
-				writecommand_cont(ILI9341_RAMWR);				
-				while (w-- > 1) { //draw line
-					writedata16_cont(textcolor);
+			pfbPixel_row += _width;
+			repeat--;
+		} while (repeat);
+
+	} else {
+		beginSPITransaction();
+		int w = 0;
+		do {
+			uint32_t x1 = x;
+			uint32_t n = numbits;		
+			
+			writecommand_cont(ILI9341_PASET); // Row addr set
+			writedata16_cont(y);   // YSTART
+			writedata16_cont(y);   // YEND	
+			
+			do {
+				n--;
+				if (bits & (1 << n)) {
+					w++;
 				}
-				writedata16_last(textcolor);
-		}
-		
-		y++;
-		repeat--;
-	} while (repeat);
-	endSPITransaction();
+				else if (w > 0) {
+					// "drawFastHLine(x1 - w, y, w, textcolor)"
+					writecommand_cont(ILI9341_CASET); // Column addr set
+					writedata16_cont(x1 - w);   // XSTART
+					writedata16_cont(x1);   // XEND					
+					writecommand_cont(ILI9341_RAMWR);
+					while (w-- > 1) { // draw line
+						writedata16_cont(textcolor);
+					}
+					writedata16_last(textcolor);
+				}
+							
+				x1++;
+			} while (n > 0);
+
+			if (w > 0) {
+					// "drawFastHLine(x1 - w, y, w, textcolor)"
+					writecommand_cont(ILI9341_CASET); // Column addr set
+					writedata16_cont(x1 - w);   // XSTART
+					writedata16_cont(x1);   // XEND
+					writecommand_cont(ILI9341_RAMWR);				
+					while (w-- > 1) { //draw line
+						writedata16_cont(textcolor);
+					}
+					writedata16_last(textcolor);
+			}
+			
+			y++;
+			repeat--;
+		} while (repeat);
+		endSPITransaction();
+	}
 #endif	
 }
 

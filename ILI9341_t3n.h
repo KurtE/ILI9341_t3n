@@ -276,18 +276,30 @@ class ILI9341_t3n : public Print
 	}
 	void HLine(int16_t x, int16_t y, int16_t w, uint16_t color)
 	  __attribute__((always_inline)) {
+	  	if (_use_fbtft) {
+	  		drawFastHLine(x, y, w, color);
+	  		return;
+	  	}
 		setAddr(x, y, x+w-1, y);
 		writecommand_cont(ILI9341_RAMWR);
 		do { writedata16_cont(color); } while (--w > 0);
 	}
 	void VLine(int16_t x, int16_t y, int16_t h, uint16_t color)
 	  __attribute__((always_inline)) {
+	  	if (_use_fbtft) {
+	  		drawFastVLine(x, y, h, color);
+	  		return;
+	  	}
 		setAddr(x, y, x, y+h-1);
 		writecommand_cont(ILI9341_RAMWR);
 		do { writedata16_cont(color); } while (--h > 0);
 	}
 	void Pixel(int16_t x, int16_t y, uint16_t color)
 	  __attribute__((always_inline)) {
+	  	if (_use_fbtft) {
+	  		_pfbtft[y*_width + x] = color;
+	  		return;
+	  	}
 		setAddr(x, y, x, y);
 		writecommand_cont(ILI9341_RAMWR);
 		writedata16_cont(color);
