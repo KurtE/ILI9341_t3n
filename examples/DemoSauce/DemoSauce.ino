@@ -245,10 +245,10 @@ void loop() {
   frameParams.audioPeak = min( (uint_fast16_t)frameParams.audioPeak, (uint_fast16_t)511 );
 
   if( !isTransition ) {
-    tft.useFBTFT(1);  // turn on frame buffer. 
+    tft.useFrameBuffer(1);  // turn on frame buffer. 
     activeAnim->perFrame( tft, frameParams );
     tft.updateScreen(); // update the screen.
-    tft.useFBTFT(0);  // turn off using frame buffer...
+    tft.useFrameBuffer(0);  // turn off using frame buffer...
     animTimeLeft -= elapsed;
     if( DO_BENCHMARKS ) frameCount++;
   }

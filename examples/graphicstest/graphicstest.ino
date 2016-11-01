@@ -204,7 +204,7 @@ void setup() {
   Serial.print(F("Rounded rects (filled) FB   "));
   Serial.println(testFilledRoundRectsFB());
   delay(200);
-  tft.useFBTFT(0);  // turn back off
+  tft.useFrameBuffer(0);  // turn back off
 
   WaitForUserInput();
 
@@ -475,7 +475,7 @@ unsigned long testFilledRectsFB(uint16_t color1, uint16_t color2) {
                 cx = tft.width()  / 2 - 1,
                 cy = tft.height() / 2 - 1;
 
-  tft.useFBTFT(1);
+  tft.useFrameBuffer(1);
   tft.fillScreen(ILI9341_BLACK);
   start = micros();
   n = min(tft.width(), tft.height());
@@ -497,7 +497,7 @@ unsigned long testFilledRoundRectsFB() {
   int           i, i2,
                 cx = tft.width()  / 2 - 1,
                 cy = tft.height() / 2 - 1;
-  tft.useFBTFT(1);
+  tft.useFrameBuffer(1);
   
   tft.fillScreen(ILI9341_BLACK);
   start = micros();

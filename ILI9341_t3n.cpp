@@ -91,7 +91,7 @@ ILI9341_t3n::ILI9341_t3n(uint8_t cs, uint8_t dc, uint8_t rst,
 //=======================================================================
 // Add optinal support for using frame buffer to speed up complex outputs
 //=======================================================================
-uint8_t ILI9341_t3n::useFBTFT(boolean b)		// use the frame buffer?  First call will allocate
+uint8_t ILI9341_t3n::useFrameBuffer(boolean b)		// use the frame buffer?  First call will allocate
 {
 	if (b) {
 		// First see if we need to allocate buffer
@@ -109,7 +109,7 @@ uint8_t ILI9341_t3n::useFBTFT(boolean b)		// use the frame buffer?  First call w
 
 }
 
-void ILI9341_t3n::freeFBTFT(void)						// explicit call to release the buffer
+void ILI9341_t3n::freeFrameBuffer(void)						// explicit call to release the buffer
 {
 	if (_pfbtft != NULL) {
 		free(_pfbtft);

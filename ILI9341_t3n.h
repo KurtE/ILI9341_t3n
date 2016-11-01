@@ -285,8 +285,8 @@ class ILI9341_t3n : public Print
 	int16_t strPixelLen(char * str);
 
 	// added support to use optional Frame buffer
-	uint8_t useFBTFT(boolean b);		// use the frame buffer?  First call will allocate
-	void	freeFBTFT(void);			// explicit call to release the buffer
+	uint8_t useFrameBuffer(boolean b);		// use the frame buffer?  First call will allocate
+	void	freeFrameBuffer(void);			// explicit call to release the buffer
 	void	updateScreen(void);			// call to say update the screen now. 
 
 
