@@ -644,11 +644,18 @@ uint16_t ILI9341_t3n::readPixel(int16_t x, int16_t y)
 	if (_use_fbtft) {
 		return _pfbtft[y*_width + x] ;
 	}
+	
+	// First pass for other SPI busses use readRect to handle the read... 
+	if (_pspin->sizeFIFO() < 4) {
+		uint16_t colors;
+		readRect(x, y, 1, 1, &colors);
+		return colors;
+	}
 
 	uint8_t dummy __attribute__((unused));
 	uint8_t r,g,b;
 
-	_pspin->beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
+	_pspin->beginTransaction(SPISettings(ILI9341_SPICLOCK_READ, MSBFIRST, SPI_MODE0));
 
 	setAddr(x, y, x, y);
 	writecommand_cont(ILI9341_RAMRD); // read from RAM
@@ -696,25 +703,39 @@ void ILI9341_t3n::readRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 //	uint8_t r,g,b;
 	uint8_t rgb[3];		// read into an array...
 	uint8_t rgb_index = 0;
-	uint16_t c = w * h;
+	uint32_t c = w * h;
 
-	_pspin->beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
+	_pspin->beginTransaction(SPISettings(ILI9341_SPICLOCK_READ, MSBFIRST, SPI_MODE0));
 
 	setAddr(x, y, x+w-1, y+h-1);
 	writecommand_cont(ILI9341_RAMRD); // read from RAM
 	_pspin->waitTransmitComplete();
+	c *= 3; // number of bytes we will transmit to the display
+	// First remove all queued up receive entries. 
+	while ((_pkinetisk_spi->SR & 0xf0)) {
+		dummy = _pkinetisk_spi->POPR;	// Read a DUMMY byte but only once
+	}
 	_pkinetisk_spi->PUSHR = 0 | (pcs_data << 16) | SPI_PUSHR_CTAS(0)| SPI_PUSHR_CONT | SPI_PUSHR_EOQ;
-	while ((_pkinetisk_spi->SR & SPI_SR_EOQF) == 0) ;
+
+	_pkinetisk_spi->PUSHR = 0 | (pcs_data << 16) | SPI_PUSHR_CTAS(0)| SPI_PUSHR_CONT;
+
+	while ((_pkinetisk_spi->SR & SPI_SR_EOQF) == 0)  {
+		// maybe keep queue with something in it, while waiting for that EOQF 
+		if ((_pkinetisk_spi->SR & (15 << 12)) == 0) {
+    		_pkinetisk_spi->PUSHR = 0x3f | (pcs_data << 16) | SPI_PUSHR_CTAS(0)| SPI_PUSHR_CONT;
+			c--;			
+		}
+	}
+
 	_pkinetisk_spi->SR = SPI_SR_EOQF;  // make sure it is clear
 	while ((_pkinetisk_spi->SR & 0xf0)) {
 		dummy = _pkinetisk_spi->POPR;	// Read a DUMMY byte but only once
 	}
-	c *= 3; // number of bytes we will transmit to the display
 	while (c--) {
         	if (c) {
-            		_pkinetisk_spi->PUSHR = 0 | (pcs_data << 16) | SPI_PUSHR_CTAS(0)| SPI_PUSHR_CONT;
+            		_pkinetisk_spi->PUSHR = 0x3f | (pcs_data << 16) | SPI_PUSHR_CTAS(0)| SPI_PUSHR_CONT;
         	} else {
-            		_pkinetisk_spi->PUSHR = 0 | (pcs_data << 16) | SPI_PUSHR_CTAS(0)| SPI_PUSHR_EOQ;
+            		_pkinetisk_spi->PUSHR = 0x3f | (pcs_data << 16) | SPI_PUSHR_CTAS(0)| SPI_PUSHR_EOQ;
 		}
 
 		// If last byte wait until all have come in...
@@ -722,14 +743,6 @@ void ILI9341_t3n::readRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 			while ((_pkinetisk_spi->SR & SPI_SR_EOQF) == 0) ;
 			_pkinetisk_spi->SR = SPI_SR_EOQF;  // make sure it is clear
 		}
-#if 0
-		if ((_pkinetisk_spi->SR & 0xf0) >= 0x30) { // do we have at least 3 bytes in queue if so extract...
-			r = _pkinetisk_spi->POPR;		// Read a RED byte of GRAM
-			g = _pkinetisk_spi->POPR;		// Read a GREEN byte of GRAM
-			b = _pkinetisk_spi->POPR;		// Read a BLUE byte of GRAM
-			*pcolors++ = color565(r,g,b);
-		}
-#else 
 		while ((_pkinetisk_spi->SR & 0xf0) > 0x00) { // do we have at least 3 bytes in queue if so extract...
 			rgb[rgb_index++] = _pkinetisk_spi->POPR;		// Read in the next byte of the color
 			if (rgb_index == 3) {
@@ -737,7 +750,6 @@ void ILI9341_t3n::readRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 				rgb_index = 0;		// set index back to 0...
 			}
 		}
-#endif
 		// like waitFiroNotFull but does not pop our return queue
 		if (_pspin->sizeFIFO() >= 4)
 			while ((_pkinetisk_spi->SR & (15 << 12)) > (3 << 12)) ;

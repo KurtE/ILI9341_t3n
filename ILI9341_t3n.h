@@ -169,6 +169,7 @@ typedef struct {
 #ifdef __cplusplus
 // At all other speeds, ILI9241_KINETISK__pspi->beginTransaction() will use the fastest available clock
 #define ILI9341_SPICLOCK 30000000
+#define ILI9341_SPICLOCK_READ 2000000
 
 class ILI9341_t3n : public Print
 {
