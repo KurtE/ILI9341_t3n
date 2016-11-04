@@ -693,7 +693,9 @@ void ILI9341_t3n::readRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 	
 
 	uint8_t dummy __attribute__((unused));
-	uint8_t r,g,b;
+//	uint8_t r,g,b;
+	uint8_t rgb[3];		// read into an array...
+	uint8_t rgb_index = 0;
 	uint16_t c = w * h;
 
 	_pspin->beginTransaction(SPISettings(2000000, MSBFIRST, SPI_MODE0));
@@ -720,14 +722,22 @@ void ILI9341_t3n::readRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 			while ((_pkinetisk_spi->SR & SPI_SR_EOQF) == 0) ;
 			_pkinetisk_spi->SR = SPI_SR_EOQF;  // make sure it is clear
 		}
-
+#if 0
 		if ((_pkinetisk_spi->SR & 0xf0) >= 0x30) { // do we have at least 3 bytes in queue if so extract...
 			r = _pkinetisk_spi->POPR;		// Read a RED byte of GRAM
 			g = _pkinetisk_spi->POPR;		// Read a GREEN byte of GRAM
 			b = _pkinetisk_spi->POPR;		// Read a BLUE byte of GRAM
 			*pcolors++ = color565(r,g,b);
 		}
-
+#else 
+		while ((_pkinetisk_spi->SR & 0xf0) > 0x00) { // do we have at least 3 bytes in queue if so extract...
+			rgb[rgb_index++] = _pkinetisk_spi->POPR;		// Read in the next byte of the color
+			if (rgb_index == 3) {
+				*pcolors++ = color565(rgb[0],rgb[1],rgb[2]);
+				rgb_index = 0;		// set index back to 0...
+			}
+		}
+#endif
 		// like waitFiroNotFull but does not pop our return queue
 		if (_pspin->sizeFIFO() >= 4)
 			while ((_pkinetisk_spi->SR & (15 << 12)) > (3 << 12)) ;
@@ -1409,7 +1419,7 @@ size_t ILI9341_t3n::write(uint8_t c)
 {
 	if (font) {
 		if (c == '\n') {
-			//cursor_y += ??
+			cursor_y += font->line_space; // Fix linefeed. Added by T.T., SoftEgg
 			cursor_x = 0;
 		} else {
 			drawFontChar(c);
