@@ -19,7 +19,7 @@
 
 //Additional graphics routines by Tim Trzepacz, SoftEgg LLC added December 2015
 //(And then accidentally deleted and rewritten March 2016. Oops!)
-//Gradient support 
+//Gradient support
 //----------------
 //		fillRectVGradient	- fills area with vertical gradient
 //		fillRectHGradient	- fills area with horizontal gradient
@@ -41,7 +41,7 @@
 
 //TODO: transparent bitmap writing routines for sprites
 
-//String Pixel Length support 
+//String Pixel Length support
 //---------------------------
 //		strPixelLen			- gets pixel length of given ASCII string
 
@@ -975,7 +975,7 @@ void ILI9341_t3n::begin(void)
 		// User specified pins make sure they are valid. 
 		if (_pspin->pinIsMOSI(_mosi) && (_pspin->pinIsMISO(_miso)) && (_pspin->pinIsSCK(_sclk)))
 		{
-			Serial.printf("MOSI:%d MISO:%d SCK:%d\n\r", _mosi, _miso, _sclk);			
+			//Serial.printf("MOSI:%d MISO:%d SCK:%d\n\r", _mosi, _miso, _sclk);			
 	        _pspin->setMOSI(_mosi);
 	        _pspin->setMISO(_miso);
 	        _pspin->setSCK(_sclk);
@@ -1655,7 +1655,7 @@ void ILI9341_t3n::drawFontChar(unsigned int c)
 
 	//Serial.printf("  cursor = %d,%d\n", cursor_x, cursor_y);
 
-	// horizontally, we draw every pixel, or none at all
+	 //horizontally, we draw every pixel, or none at all
 	if (cursor_x < 0) cursor_x = 0;
 	int32_t origin_x = cursor_x + xoffset;
 	if (origin_x < 0) {
@@ -1682,36 +1682,63 @@ void ILI9341_t3n::drawFontChar(unsigned int c)
 	// TODO: compute top skip and number of lines
 	int32_t linecount = height;
 	//uint32_t loopcount = 0;
-	uint32_t y = origin_y;
+	int32_t y = origin_y;
+	bool opaque = (textbgcolor != textcolor);
+	if (opaque) {
+		int header = origin_y-cursor_y;
+		// clear above character
+		fillRect(cursor_x-delta,cursor_y,delta,header, textbgcolor);
+
+		// clear below character
+		fillRect(cursor_x-delta,origin_y+height,delta, font->line_space - (height + header), textbgcolor);
+	}
 	while (linecount) {
 		//Serial.printf("    linecount = %d\n", linecount);
 		uint32_t b = fetchbit(data, bitoffset++);
 		if (b == 0) {
 			//Serial.println("    single line");
+			if (opaque && (origin_x > cursor_x-(int32_t)delta)) {
+				drawFastHLine(cursor_x-delta, y, origin_x - (cursor_x-delta), textbgcolor);
+			}
 			uint32_t x = 0;
 			do {
 				uint32_t xsize = width - x;
 				if (xsize > 32) xsize = 32;
 				uint32_t bits = fetchbits_unsigned(data, bitoffset, xsize);
-				drawFontBits(bits, xsize, origin_x + x, y, 1);
+				drawFontBits(opaque, bits, xsize, origin_x + x, y, 1);
 				bitoffset += xsize;
 				x += xsize;
 			} while (x < width);
+
+			int remaining = cursor_x-origin_x-width;
+			if (opaque && remaining > 0) {
+				drawFastHLine(origin_x+width, y, remaining, textbgcolor);
+			}
+ 
 			y++;
 			linecount--;
 		} else {
 			uint32_t n = fetchbits_unsigned(data, bitoffset, 3) + 2;
+			if (opaque && (origin_x > cursor_x-(int32_t)delta)) {
+				fillRect(cursor_x-delta, y, origin_x - (cursor_x-delta), n, textbgcolor);
+			}
 			bitoffset += 3;
 			uint32_t x = 0;
 			do {
-				uint32_t xsize = width - x;
+				int32_t xsize = width - x;
 				if (xsize > 32) xsize = 32;
-				//Serial.printf("    multi line %d\n", n);
 				uint32_t bits = fetchbits_unsigned(data, bitoffset, xsize);
-				drawFontBits(bits, xsize, origin_x + x, y, n);
+				//Serial.printf("    multi line %d %d %x\n", n, x, bits);
+				drawFontBits(opaque, bits, xsize, origin_x + x, y, n);
 				bitoffset += xsize;
 				x += xsize;
 			} while (x < width);
+
+			int remaining = cursor_x-origin_x-width;
+			if (opaque && remaining > 0) {
+				fillRect(origin_x+width, y, remaining, n, textbgcolor);
+			}
+
 			y += n;
 			linecount -= n;
 		}
@@ -1797,7 +1824,7 @@ int16_t ILI9341_t3n::strPixelLen(char * str)
 //	Serial.printf("Return  maxlen =  %d\n", maxlen);
 	return( maxlen );
 }
-
+#if 0
 void ILI9341_t3n::drawFontBits(uint32_t bits, uint32_t numbits, uint32_t x, uint32_t y, uint32_t repeat)
 {
 #if 0			
@@ -1887,6 +1914,53 @@ void ILI9341_t3n::drawFontBits(uint32_t bits, uint32_t numbits, uint32_t x, uint
 		endSPITransaction();
 	}
 #endif	
+}
+#endif
+void ILI9341_t3n::drawFontBits(bool opaque, uint32_t bits, uint32_t numbits, int32_t x, int32_t y, uint32_t repeat)
+{
+	if (bits == 0) {
+		if (opaque) {
+			fillRect(x, y, numbits, repeat, textbgcolor);
+		}
+	} else {
+		int32_t x1 = x;
+		uint32_t n = numbits;
+		int w;
+		int bgw;
+
+		w = 0;
+		bgw = 0;
+
+		do {
+			n--;
+			if (bits & (1 << n)) {
+				if (bgw>0) {
+					if (opaque) {
+						fillRect(x1 - bgw, y, bgw, repeat, textbgcolor);
+					}
+					bgw=0;
+				}
+				w++;
+			} else {
+				if (w>0) {
+					fillRect(x1 - w, y, w, repeat, textcolor);
+					w = 0;
+				}
+				bgw++;
+			}
+			x1++;
+		} while (n > 0);
+
+		if (w > 0) {
+			fillRect(x1 - w, y, w, repeat, textcolor);
+		}
+
+		if (bgw > 0) {
+			if (opaque) {
+				fillRect(x1 - bgw, y, bgw, repeat, textbgcolor);
+			}
+		}
+	}
 }
 
 void ILI9341_t3n::setCursor(int16_t x, int16_t y) {
