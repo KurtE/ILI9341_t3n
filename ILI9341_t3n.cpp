@@ -1766,12 +1766,12 @@ void ILI9341_t3n::drawFontChar(unsigned int c)
 		int start_y = (origin_y < cursor_y) ? origin_y : cursor_y; 
 		if (start_y < 0) start_y = 0;
 		int end_x = cursor_x + delta; 
-		if ((start_x + (int)width) > end_x)
-			end_x = start_x + (int)width;
+		if ((origin_x + (int)width) > end_x)
+			end_x = origin_x + (int)width;
 		if (end_x > _width)  end_x = _width;	
 		int end_y = cursor_y + font->line_space; 
-		if ((start_y + (int)height) > end_y)
-			end_y = start_y + (int)height;
+		if ((origin_y + (int)height) > end_y)
+			end_y = origin_y + (int)height;
 		if (end_y > _height) end_y = _height;	
 		end_x--;	// setup to last one we draw
 		end_y--;
