@@ -1736,10 +1736,6 @@ void ILI9341_t3n::drawFontChar(unsigned int c)
 				linecount--;
 			} else {
 				uint32_t n = fetchbits_unsigned(data, bitoffset, 3) + 2;
-				if (opaque && (origin_x > cursor_x)) {
-					//Serial.printf("FL %d %d %d %d\n", cursor_x, y, origin_x - (cursor_x), n);
-					fillRect(cursor_x, y, origin_x - (cursor_x), n, textbgcolor);
-				}
 				bitoffset += 3;
 				uint32_t x = 0;
 				do {
@@ -1763,27 +1759,42 @@ void ILI9341_t3n::drawFontChar(unsigned int c)
 		}
 	} else {
 		// Now opaque mode... 
-			// Now write out background color for the number of rows above the above the character
-		int header = origin_y-cursor_y;
-		int blank_lines = header;
-		// Now lets process each of the data lines. 
-		uint16_t cnt_left_opaque = origin_x - cursor_x;
-		uint16_t cnt_right_opaque = delta - (width + cnt_left_opaque);
-		//Serial.printf("LO: %d RO: %d\n", cnt_left_opaque, cnt_right_opaque);
+		// Now write out background color for the number of rows above the above the character
+		// figure out bounding rectangle... 
+		int start_x = (origin_x < cursor_x) ? origin_x : cursor_x; 	
+		if (start_x < 0) start_x = 0;
+		int start_y = (origin_y < cursor_y) ? origin_y : cursor_y; 
+		if (start_y < 0) start_y = 0;
+		int end_x = cursor_x + delta; 
+		if ((start_x + (int)width) > end_x)
+			end_x = start_x + (int)width;
+		if (end_x > _width)  end_x = _width;	
+		int end_y = cursor_y + font->line_space; 
+		if ((start_y + (int)height) > end_y)
+			end_y = start_y + (int)height;
+		if (end_y > _height) end_y = _height;	
+		end_x--;	// setup to last one we draw
+		end_y--;
+		//Serial.printf("Bounding: (%d, %d)-(%d, %d)\n", start_x, start_y, end_x, end_y);
 
 		if (_use_fbtft) {
-			uint16_t * pfbPixel_row = &_pfbtft[ cursor_y*_width + cursor_x];
+			uint16_t * pfbPixel_row = &_pfbtft[ start_y*_width + start_x];
 			uint16_t * pfbPixel;
-			//Serial.printf("BA: %d %d\n", blank_lines, delta);
-			while (blank_lines--) {
+			int screen_y = start_y;
+			int screen_x;
+
+			while (screen_y < origin_y) {
 				pfbPixel = pfbPixel_row;
-				for (uint16_t x=0; x < delta; x++) {
+				for (screen_x = start_x; screen_x <= end_x; screen_x++) {
 					*pfbPixel++ = textbgcolor;
 				}
+				screen_y++;
 				pfbPixel_row += _width;
-			}	
+			}
 
 			// Now lets process each of the data lines. 
+			screen_y = origin_y;
+
 			while (linecount) {
 				//Serial.printf("    linecount = %d\n", linecount);
 				uint32_t b = fetchbit(data, bitoffset++);
@@ -1798,63 +1809,63 @@ void ILI9341_t3n::drawFontChar(unsigned int c)
 				}
 				uint32_t bitoffset_row_start = bitoffset;
 				while (n--) {
-					pfbPixel = pfbPixel_row;
-					bitoffset = bitoffset_row_start;	// we will work through these bits maybe multiple times
-					uint16_t dx = cnt_left_opaque;
-					while (dx--) {
-						*pfbPixel++ = textbgcolor;
-					}
-					uint32_t x = 0;
-					do {
-						uint32_t xsize = width - x;
-						if (xsize > 32) xsize = 32;
-						uint32_t bits = fetchbits_unsigned(data, bitoffset, xsize);
-						uint32_t bit_mask = 1 << (xsize-1);
-						//Serial.printf(" %d %d %x %x\n", x, xsize, bits, bit_mask);
-						while (bit_mask) {
-							*pfbPixel++ = (bits & bit_mask) ? textcolor : textbgcolor;
-							bit_mask = bit_mask >> 1;
+					if ((screen_y>=0) && (screen_y < _height)) {
+						pfbPixel = pfbPixel_row;
+						bitoffset = bitoffset_row_start;	// we will work through these bits maybe multiple times
+						for (screen_x = start_x; screen_x < origin_x; screen_x++) {
+							*pfbPixel++ = textbgcolor;
 						}
-						bitoffset += xsize;
-						x += xsize;
-					} while (x < width);
-					// output bg color and right hand side
-					dx = cnt_right_opaque;
-					while (dx--) {
-						*pfbPixel++ = textbgcolor;
-					}
-		 
+
+						uint32_t x = 0;
+						do {
+							uint32_t xsize = width - x;
+							if (xsize > 32) xsize = 32;
+							uint32_t bits = fetchbits_unsigned(data, bitoffset, xsize);
+							uint32_t bit_mask = 1 << (xsize-1);
+							//Serial.printf(" %d %d %x %x\n", x, xsize, bits, bit_mask);
+							while (bit_mask) {
+								*pfbPixel++ = (bits & bit_mask) ? textcolor : textbgcolor;
+								bit_mask = bit_mask >> 1;
+							}
+							bitoffset += xsize;
+							x += xsize;
+						} while (x < width);
+						// output bg color and right hand side
+						while (screen_x++ <= end_x) {
+							*pfbPixel++ = textbgcolor;
+						}
+					}			 
+		 			screen_y++;
 					pfbPixel_row += _width;
 					linecount--;
 				}
 			}
 
 			// clear below character
-	 		blank_lines = font->line_space - (height + header);
-	 		//Serial.printf("below %d\n", blank_lines);
-	 		while (blank_lines > 0) {
+	 		while (screen_y++ <= end_y) {
 				pfbPixel = pfbPixel_row;
-				for (uint16_t x=0; x < delta; x++) {
+				for (screen_x = start_x; screen_x <= end_x; screen_x++) {
 					*pfbPixel++ = textbgcolor;
 				}
 				pfbPixel_row += _width;
-				blank_lines--;
 			}
 
 		} else {
 			beginSPITransaction();
-			//Serial.printf("SetAddr %d %d %d %d\n", cursor_x, cursor_y, cursor_x + delta - 1, cursor_y + font->line_space-1);
-			setAddr(cursor_x, cursor_y, cursor_x + delta - 1, cursor_y + font->line_space-1);
+			//Serial.printf("SetAddr %d %d %d %d\n", start_x, start_y, end_x, end_y);
+			setAddr(start_x, start_y, end_x, end_y);
 			writecommand_cont(ILI9341_RAMWR);
-
-			//Serial.printf("BA: %d %d\n", blank_lines, delta);
-			while (blank_lines--) {
-				for (uint16_t x=0; x < delta; x++) {
+			int screen_y = start_y;
+			int screen_x;
+			while (screen_y < origin_y) {
+				for (screen_x = start_x; screen_x <= end_x; screen_x++) {
 					writedata16_cont(textbgcolor);
 				}
+				screen_y++;
 			}
 
 			// Now lets process each of the data lines. 
+			screen_y = origin_y;
 			while (linecount) {
 				//Serial.printf("    linecount = %d\n", linecount);
 				uint32_t b = fetchbit(data, bitoffset++);
@@ -1869,47 +1880,44 @@ void ILI9341_t3n::drawFontChar(unsigned int c)
 				}
 				uint32_t bitoffset_row_start = bitoffset;
 				while (n--) {
-					bitoffset = bitoffset_row_start;	// we will work through these bits maybe multiple times
-					uint16_t dx = cnt_left_opaque;
-					while (dx--) {
-						writedata16_cont(textbgcolor);
-					}
-					uint32_t x = 0;
-					do {
-						uint32_t xsize = width - x;
-						if (xsize > 32) xsize = 32;
-						uint32_t bits = fetchbits_unsigned(data, bitoffset, xsize);
-						uint32_t bit_mask = 1 << (xsize-1);
-						//Serial.printf(" %d %d %x %x\n", x, xsize, bits, bit_mask);
-						while (bit_mask) {
-							writedata16_cont((bits & bit_mask) ? textcolor : textbgcolor);
-							bit_mask = bit_mask >> 1;
+					// do some clipping here. 
+					if ((screen_y>=0) && (screen_y < _height)) {
+						bitoffset = bitoffset_row_start;	// we will work through these bits maybe multiple times
+
+						for (screen_x = start_x; screen_x < origin_x; screen_x++) {
+							writedata16_cont(textbgcolor);
 						}
-						bitoffset += xsize;
-						x += xsize;
-					} while (x < width);
-					// output bg color and right hand side
-					dx = cnt_right_opaque;
-					while (dx--) {
-						writedata16_cont(textbgcolor);
+						uint32_t x = 0;
+						do {
+							uint32_t xsize = width - x;
+							if (xsize > 32) xsize = 32;
+							uint32_t bits = fetchbits_unsigned(data, bitoffset, xsize);
+							uint32_t bit_mask = 1 << (xsize-1);
+							//Serial.printf(" %d %d %x %x\n", x, xsize, bits, bit_mask);
+							while (bit_mask) {
+								writedata16_cont((bits & bit_mask) ? textcolor : textbgcolor);
+								bit_mask = bit_mask >> 1;
+								screen_x++ ; // Current actual screen X
+							}
+							bitoffset += xsize;
+							x += xsize;
+						} while (x < width);
+						// output bg color and right hand side
+						while (screen_x++ <= end_x) {
+							writedata16_cont(textbgcolor);
+						}
 					}
-		 
+		 			screen_y++;
 					linecount--;
 				}
 			}
 
-			// clear below character
-	 		blank_lines = font->line_space - (height + header);
-	 		//Serial.printf("below %d\n", blank_lines);
-	 		while (blank_lines > 0) {
-				for (uint16_t x=0; x < delta; x++) {
-					if ((blank_lines == 1) && (x == (delta-1)))
-						writedata16_last(textbgcolor);
-				    else
-						writedata16_cont(textbgcolor);
-				}
-				blank_lines--;
+			// clear below character - note reusing xcreen_x for this
+			screen_x = (end_y + 1 - screen_y) * (end_x + 1 - start_x); // How many bytes we need to still output
+			while (screen_x-- > 1) {
+				writedata16_cont(textbgcolor);
 			}
+			writedata16_last(textbgcolor);
 			endSPITransaction();
 		}
 
