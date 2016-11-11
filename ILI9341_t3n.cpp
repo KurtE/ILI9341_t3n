@@ -51,6 +51,7 @@
 #include <SPIN.h>
 #include <SPI.h>  
 
+
 // Teensy 3.1 can only generate 30 MHz SPI when running at 120 MHz (overclock)
 
 #define WIDTH  ILI9341_TFTWIDTH
@@ -995,7 +996,7 @@ void ILI9341_t3n::begin(void)
 			pinMode(_cs, OUTPUT);
 			_csport    = portOutputRegister(digitalPinToPort(_cs));
   			_cspinmask = digitalPinToBitMask(_cs);
-  			Serial.printf("CS(%d) not cs: %x %x\n\r", _cs, _csport, _cspinmask);
+  			//Serial.printf("CS(%d) not cs: %x %x\n\r", _cs, _csport, _cspinmask);
 		} else {
 			pcs_data = 0;
 			pcs_command = 0;
@@ -1719,39 +1720,25 @@ void ILI9341_t3n::drawFontChar(unsigned int c)
 	if (!opaque) {
 		while (linecount) {
 			//Serial.printf("    linecount = %d\n", linecount);
-			uint32_t b = fetchbit(data, bitoffset++);
-			if (b == 0) {
-				//Serial.println("    single line");
-				uint32_t x = 0;
-				do {
-					uint32_t xsize = width - x;
-					if (xsize > 32) xsize = 32;
-					uint32_t bits = fetchbits_unsigned(data, bitoffset, xsize);
-					drawFontBits(opaque, bits, xsize, origin_x + x, y, 1);
-					bitoffset += xsize;
-					x += xsize;
-				} while (x < width);
-	 
-				y++;
-				linecount--;
-			} else {
-				uint32_t n = fetchbits_unsigned(data, bitoffset, 3) + 2;
+			uint32_t n = 1;
+			if (fetchbit(data, bitoffset++) != 0) {
+				n = fetchbits_unsigned(data, bitoffset, 3) + 2;
 				bitoffset += 3;
-				uint32_t x = 0;
-				do {
-					int32_t xsize = width - x;
-					if (xsize > 32) xsize = 32;
-					uint32_t bits = fetchbits_unsigned(data, bitoffset, xsize);
-					//Serial.printf("    multi line %d %d %x\n", n, x, bits);
-					drawFontBits(opaque, bits, xsize, origin_x + x, y, n);
-					bitoffset += xsize;
-					x += xsize;
-				} while (x < width);
-
-
-				y += n;
-				linecount -= n;
 			}
+			uint32_t x = 0;
+			do {
+				int32_t xsize = width - x;
+				if (xsize > 32) xsize = 32;
+				uint32_t bits = fetchbits_unsigned(data, bitoffset, xsize);
+				//Serial.printf("    multi line %d %d %x\n", n, x, bits);
+				drawFontBits(opaque, bits, xsize, origin_x + x, y, n);
+				bitoffset += xsize;
+				x += xsize;
+			} while (x < width);
+
+
+			y += n;
+			linecount -= n;
 			//if (++loopcount > 100) {
 				//Serial.println("     abort draw loop");
 				//break;
@@ -1768,11 +1755,11 @@ void ILI9341_t3n::drawFontChar(unsigned int c)
 		int end_x = cursor_x + delta; 
 		if ((origin_x + (int)width) > end_x)
 			end_x = origin_x + (int)width;
-		if (end_x > _width)  end_x = _width;	
+		if (end_x >= _width)  end_x = _width-1;	
 		int end_y = cursor_y + font->line_space; 
 		if ((origin_y + (int)height) > end_y)
 			end_y = origin_y + (int)height;
-		if (end_y > _height) end_y = _height;	
+		if (end_y >= _height) end_y = _height-1;	
 		end_x--;	// setup to last one we draw
 		end_y--;
 		//Serial.printf("Bounding: (%d, %d)-(%d, %d)\n", start_x, start_y, end_x, end_y);
@@ -1823,9 +1810,10 @@ void ILI9341_t3n::drawFontChar(unsigned int c)
 							uint32_t bits = fetchbits_unsigned(data, bitoffset, xsize);
 							uint32_t bit_mask = 1 << (xsize-1);
 							//Serial.printf(" %d %d %x %x\n", x, xsize, bits, bit_mask);
-							while (bit_mask) {
+							while (bit_mask && (screen_x <= end_x)) {
 								*pfbPixel++ = (bits & bit_mask) ? textcolor : textbgcolor;
 								bit_mask = bit_mask >> 1;
+								screen_x++;	// increment our pixel position. 
 							}
 							bitoffset += xsize;
 							x += xsize;
@@ -1930,7 +1918,7 @@ void ILI9341_t3n::drawFontChar(unsigned int c)
 //strPixelLen			- gets pixel length of given ASCII string
 int16_t ILI9341_t3n::strPixelLen(char * str)
 {
-//	Serial.printf("strPixelLen %s\n", str);
+//	//Serial.printf("strPixelLen %s\n", str);
 	if (!str) return(0);
 	uint16_t len=0, maxlen=0;
 	while (*str)
@@ -1956,7 +1944,7 @@ int16_t ILI9341_t3n::strPixelLen(char * str)
 				const uint8_t *data;
 				uint16_t c = *str;
 
-//				Serial.printf("char %c(%d)\n", c,c);
+//				//Serial.printf("char %c(%d)\n", c,c);
 
 				if (c >= font->index1_first && c <= font->index1_last) {
 					bitoffset = c - font->index1_first;
@@ -1975,32 +1963,32 @@ int16_t ILI9341_t3n::strPixelLen(char * str)
 				uint32_t encoding = fetchbits_unsigned(data, 0, 3);
 				if (encoding != 0) continue;
 //				uint32_t width = fetchbits_unsigned(data, 3, font->bits_width);
-//				Serial.printf("  width =  %d\n", width);
+//				//Serial.printf("  width =  %d\n", width);
 				bitoffset = font->bits_width + 3;
 				bitoffset += font->bits_height;
 
 //				int32_t xoffset = fetchbits_signed(data, bitoffset, font->bits_xoffset);
-//				Serial.printf("  xoffset =  %d\n", xoffset);
+//				//Serial.printf("  xoffset =  %d\n", xoffset);
 				bitoffset += font->bits_xoffset;
 				bitoffset += font->bits_yoffset;
 
 				uint32_t delta = fetchbits_unsigned(data, bitoffset, font->bits_delta);
 				bitoffset += font->bits_delta;
-//				Serial.printf("  delta =  %d\n", delta);
+//				//Serial.printf("  delta =  %d\n", delta);
 
 				len += delta;//+width-xoffset;
-//				Serial.printf("  len =  %d\n", len);
+//				//Serial.printf("  len =  %d\n", len);
 				if ( len > maxlen )
 				{
 					maxlen=len;
-//					Serial.printf("  maxlen =  %d\n", maxlen);
+//					//Serial.printf("  maxlen =  %d\n", maxlen);
 				}
 			
 			}
 		}
 		str++;
 	}
-//	Serial.printf("Return  maxlen =  %d\n", maxlen);
+//	//Serial.printf("Return  maxlen =  %d\n", maxlen);
 	return( maxlen );
 }
 void ILI9341_t3n::drawFontBits(bool opaque, uint32_t bits, uint32_t numbits, int32_t x, int32_t y, uint32_t repeat)
