@@ -79,6 +79,9 @@ ILI9341_t3n::ILI9341_t3n(uint8_t cs, uint8_t dc, uint8_t rst,
 	textcolor = textbgcolor = 0xFFFF;
 	wrap      = true;
 	font      = NULL;
+	setClipRect();
+	setOrigin();
+
 	// Added to see how much impact actually using non hardware CS pin might be
     _cspinmask = 0;
     _csport = NULL;
@@ -161,8 +164,9 @@ void ILI9341_t3n::pushColor(uint16_t color)
 }
 
 void ILI9341_t3n::drawPixel(int16_t x, int16_t y, uint16_t color) {
-
-	if((x < 0) ||(x >= _width) || (y < 0) || (y >= _height)) return;
+	x += _originx;
+	y += _originy;
+	if((x < _displayclipx1) ||(x >= _displayclipx2) || (y < _displayclipy1) || (y >= _displayclipy2)) return;
 
 	if (_use_fbtft) {
 		_pfbtft[y*_width + x] = color;
@@ -178,10 +182,14 @@ void ILI9341_t3n::drawPixel(int16_t x, int16_t y, uint16_t color) {
 
 void ILI9341_t3n::drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t color)
 {
-	// Rudimentary clipping
-	if((x >= _width) || (x < 0) || (y >= _height)) return;
-	if(y < 0) {	h += y; y = 0; 	}
-	if((y+h-1) >= _height) h = _height-y;
+	x+=_originx;
+	y+=_originy;
+	// Rectangular clipping
+	if((x < _displayclipx1) || (x >= _displayclipx2) || (y >= _displayclipy2)) return;
+	if(y < _displayclipy1) { h = h - (_displayclipy1 - y); y = _displayclipy1;}
+	if((y+h-1) >= _displayclipy2) h = _displayclipy2-y;
+	if(h<1) return;
+
 	if (_use_fbtft) {
 		uint16_t * pfbPixel = &_pfbtft[ y*_width + x];
 		while (h--) {
@@ -202,10 +210,15 @@ void ILI9341_t3n::drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t color)
 
 void ILI9341_t3n::drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color)
 {
-	// Rudimentary clipping
-	if((x >= _width) || (y >= _height) || (y < 0)) return;
-	if(x < 0) {	w += x; x = 0; 	}
-	if((x+w-1) >= _width)  w = _width-x;
+	x+=_originx;
+	y+=_originy;
+
+	// Rectangular clipping
+	if((y < _displayclipy1) || (x >= _displayclipx2) || (y >= _displayclipy2)) return;
+	if(x<_displayclipx1) { w = w - (_displayclipx1 - x); x = _displayclipx1; }
+	if((x+w-1) >= _displayclipx2)  w = _displayclipx2-x;
+	if (w<1) return;
+
 	if (_use_fbtft) {
 		if ((x&1) || (w&1)) {
 			uint16_t * pfbPixel = &_pfbtft[ y*_width + x];
@@ -235,8 +248,8 @@ void ILI9341_t3n::drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color)
 
 void ILI9341_t3n::fillScreen(uint16_t color)
 {
-	if (_use_fbtft) {
-		// Speed up lifted from Franks DMA code... 
+	if (_use_fbtft && _standard) {
+		// Speed up lifted from Franks DMA code... _standard is if no offsets and rects..
 		uint32_t color32 = (color << 16) | color;
 
 		uint32_t *pfbPixel = (uint32_t *)_pfbtft;
@@ -260,12 +273,15 @@ void ILI9341_t3n::fillScreen(uint16_t color)
 // fill a rectangle
 void ILI9341_t3n::fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color)
 {
-	// rudimentary clipping (drawChar w/big text requires this)
-	if((x >= _width) || (y >= _height)) return;
-	if(x < 0) {	w += x; x = 0; 	}
-	if(y < 0) {	h += y; y = 0; 	}
-	if((x + w - 1) >= _width)  w = _width  - x;
-	if((y + h - 1) >= _height) h = _height - y;
+	x+=_originx;
+	y+=_originy;
+
+	// Rectangular clipping (drawChar w/big text requires this)
+	if((x >= _displayclipx2) || (y >= _displayclipy2)) return;
+	if(x < _displayclipx1) {	w -= (_displayclipx1-x); x = _displayclipx1; 	}
+	if(y < _displayclipy1) {	h -= (_displayclipy1 - y); y = _displayclipy1; 	}
+	if((x + w - 1) >= _displayclipx2)  w = _displayclipx2  - x;
+	if((y + h - 1) >= _displayclipy2) h = _displayclipy2 - y;
 
 	if (_use_fbtft) {
 		if ((x&1) || (w&1)) {
@@ -315,12 +331,15 @@ void ILI9341_t3n::fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 // fillRectVGradient	- fills area with vertical gradient
 void ILI9341_t3n::fillRectVGradient(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color1, uint16_t color2)
 {
-	// rudimentary clipping (drawChar w/big text requires this)
-	if((x >= _width) || (y >= _height)) return;
-	if(x < 0) {	w += x; x = 0; 	}
-	if(y < 0) {	h += y; y = 0; 	}
-	if((x + w - 1) >= _width)  w = _width  - x;
-	if((y + h - 1) >= _height) h = _height - y;
+	x+=_originx;
+	y+=_originy;
+
+	// Rectangular clipping 
+	if((x >= _displayclipx2) || (y >= _displayclipy2)) return;
+	if(x < _displayclipx1) {	w -= (_displayclipx1-x); x = _displayclipx1; 	}
+	if(y < _displayclipy1) {	h -= (_displayclipy1 - y); y = _displayclipy1; 	}
+	if((x + w - 1) >= _displayclipx2)  w = _displayclipx2  - x;
+	if((y + h - 1) >= _displayclipy2) h = _displayclipy2 - y;
 	
 	int16_t r1, g1, b1, r2, g2, b2, dr, dg, db, r, g, b;
 	color565toRGB14(color1,r1,g1,b1);
@@ -379,12 +398,15 @@ void ILI9341_t3n::fillRectVGradient(int16_t x, int16_t y, int16_t w, int16_t h, 
 // fillRectHGradient	- fills area with horizontal gradient
 void ILI9341_t3n::fillRectHGradient(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color1, uint16_t color2)
 {
-	// rudimentary clipping (drawChar w/big text requires this)
-	if((x >= _width) || (y >= _height)) return;
-	if(x < 0) {	w += x; x = 0; 	}
-	if(y < 0) {	h += y; y = 0; 	}
-	if((x + w - 1) >= _width)  w = _width  - x;
-	if((y + h - 1) >= _height) h = _height - y;
+	x+=_originx;
+	y+=_originy;
+
+	// Rectangular clipping 
+	if((x >= _displayclipx2) || (y >= _displayclipy2)) return;
+	if(x < _displayclipx1) {	w -= (_displayclipx1-x); x = _displayclipx1; 	}
+	if(y < _displayclipy1) {	h -= (_displayclipy1 - y); y = _displayclipy1; 	}
+	if((x + w - 1) >= _displayclipx2)  w = _displayclipx2  - x;
+	if((y + h - 1) >= _displayclipy2) h = _displayclipy2 - y;
 	
 	int16_t r1, g1, b1, r2, g2, b2, dr, dg, db, r, g, b;
 	uint16_t color;
@@ -474,6 +496,9 @@ void ILI9341_t3n::setRotation(uint8_t m)
 		break;
 	}
 	endSPITransaction();
+	setClipRect();
+	setOrigin();
+	
 	cursor_x = 0;
 	cursor_y = 0;
 }
@@ -765,6 +790,17 @@ void ILI9341_t3n::readRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 // Now lets see if we can writemultiple pixels
 void ILI9341_t3n::writeRect(int16_t x, int16_t y, int16_t w, int16_t h, const uint16_t *pcolors)
 {
+
+	x+=_originx;
+	y+=_originy;
+
+	// Rectangular clipping 
+	if((x >= _displayclipx2) || (y >= _displayclipy2)) return;
+	if(x < _displayclipx1) {	w -= (_displayclipx1-x); x = _displayclipx1; 	}
+	if(y < _displayclipy1) {	h -= (_displayclipy1 - y); y = _displayclipy1; 	}
+	if((x + w - 1) >= _displayclipx2)  w = _displayclipx2  - x;
+	if((y + h - 1) >= _displayclipy2) h = _displayclipy2 - y;
+
 	if (_use_fbtft) {
 		uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
 		for (;h>0; h--) {
@@ -794,6 +830,16 @@ void ILI9341_t3n::writeRect(int16_t x, int16_t y, int16_t w, int16_t h, const ui
 //					color palette data in array at palette
 void ILI9341_t3n::writeRect8BPP(int16_t x, int16_t y, int16_t w, int16_t h, const uint8_t *pixels, const uint16_t * palette )
 {
+	x+=_originx;
+	y+=_originy;
+
+	// Rectangular clipping 
+	if((x >= _displayclipx2) || (y >= _displayclipy2)) return;
+	if(x < _displayclipx1) {	w -= (_displayclipx1-x); x = _displayclipx1; 	}
+	if(y < _displayclipy1) {	h -= (_displayclipy1 - y); y = _displayclipy1; 	}
+	if((x + w - 1) >= _displayclipx2)  w = _displayclipx2  - x;
+	if((y + h - 1) >= _displayclipy2) h = _displayclipy2 - y;
+
 	if (_use_fbtft) {
 		uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
 		for (;h>0; h--) {
@@ -824,6 +870,16 @@ void ILI9341_t3n::writeRect8BPP(int16_t x, int16_t y, int16_t w, int16_t h, cons
 //					width must be at least 2 pixels
 void ILI9341_t3n::writeRect4BPP(int16_t x, int16_t y, int16_t w, int16_t h, const uint8_t *pixels, const uint16_t * palette )
 {
+	x+=_originx;
+	y+=_originy;
+
+	// Rectangular clipping 
+	if((x >= _displayclipx2) || (y >= _displayclipy2)) return;
+	if(x < _displayclipx1) {	w -= (_displayclipx1-x); x = _displayclipx1; 	}
+	if(y < _displayclipy1) {	h -= (_displayclipy1 - y); y = _displayclipy1; 	}
+	if((x + w - 1) >= _displayclipx2)  w = _displayclipx2  - x;
+	if((y + h - 1) >= _displayclipy2) h = _displayclipy2 - y;
+
 	if (_use_fbtft) {
 		uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
 		for (;h>0; h--) {
@@ -857,6 +913,16 @@ void ILI9341_t3n::writeRect4BPP(int16_t x, int16_t y, int16_t w, int16_t h, cons
 //					width must be at least 4 pixels
 void ILI9341_t3n::writeRect2BPP(int16_t x, int16_t y, int16_t w, int16_t h, const uint8_t *pixels, const uint16_t * palette )
 {
+	x+=_originx;
+	y+=_originy;
+
+	// Rectangular clipping 
+	if((x >= _displayclipx2) || (y >= _displayclipy2)) return;
+	if(x < _displayclipx1) {	w -= (_displayclipx1-x); x = _displayclipx1; 	}
+	if(y < _displayclipy1) {	h -= (_displayclipy1 - y); y = _displayclipy1; 	}
+	if((x + w - 1) >= _displayclipx2)  w = _displayclipx2  - x;
+	if((y + h - 1) >= _displayclipy2) h = _displayclipy2 - y;
+
 	if (_use_fbtft) {
 		uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
 		for (;h>0; h--) {
@@ -896,6 +962,16 @@ void ILI9341_t3n::writeRect2BPP(int16_t x, int16_t y, int16_t w, int16_t h, cons
 //					width must be at least 8 pixels
 void ILI9341_t3n::writeRect1BPP(int16_t x, int16_t y, int16_t w, int16_t h, const uint8_t *pixels, const uint16_t * palette )
 {
+	x+=_originx;
+	y+=_originy;
+
+	// Rectangular clipping 
+	if((x >= _displayclipx2) || (y >= _displayclipy2)) return;
+	if(x < _displayclipx1) {	w -= (_displayclipx1-x); x = _displayclipx1; 	}
+	if(y < _displayclipy1) {	h -= (_displayclipy1 - y); y = _displayclipy1; 	}
+	if((x + w - 1) >= _displayclipx2)  w = _displayclipx2  - x;
+	if((y + h - 1) >= _displayclipy2) h = _displayclipy2 - y;
+
 	if (_use_fbtft) {
 		uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
 		for (;h>0; h--) {
@@ -1549,55 +1625,99 @@ void ILI9341_t3n::drawChar(int16_t x, int16_t y, unsigned char c,
 		}
 	} else {
 		// This solid background approach is about 5 time faster
+		uint8_t xc, yc;
+		uint8_t xr, yr;
+		uint8_t mask = 0x01;
+		uint16_t color;
+
+		// We need to offset by the origin.
+		x+=_originx;
+		y+=_originy;
+		int16_t x_char_start = x;  // remember our X where we start outputting...
+
+		if((x >= _displayclipx2)            || // Clip right
+			 (y >= _displayclipy2)           || // Clip bottom
+			 ((x + 6 * size - 1) < _displayclipx1) || // Clip left  TODO: this is not correct
+			 ((y + 8 * size - 1) < _displayclipy1))   // Clip top   TODO: this is not correct
+			return;
+
+
 		if (_use_fbtft) {
-			uint8_t xr, yr;
-			uint8_t mask = 0x01;
-			uint16_t color;
+
 			uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
-			for (y=0; y < 8; y++) {
-				for (yr=0; yr < size; yr++) {
-					uint16_t * pfbPixel = pfbPixel_row;
-					for (x=0; x < 5; x++) {
-						if (glcdfont[c * 5 + x] & mask) {
-							color = fgcolor;
-						} else {
-							color = bgcolor;
+			for (yc=0; (yc < 8) && (y < _displayclipy2); yc++) {
+				for (yr=0; (yr < size) && (y < _displayclipy2); yr++) {
+					x = x_char_start; 		// get our first x position...
+					if (y >= _displayclipy1) {
+						uint16_t * pfbPixel = pfbPixel_row;
+						for (xc=0; xc < 5; xc++) {
+							if (glcdfont[c * 5 + x] & mask) {
+								color = fgcolor;
+							} else {
+								color = bgcolor;
+							}
+							for (xr=0; xr < size; xr++) {
+								if ((x >= _displayclipx1) && (x < _displayclipx2)) {
+									*pfbPixel++ = color;
+								}
+								x++;
+							}
 						}
 						for (xr=0; xr < size; xr++) {
-							*pfbPixel++ = color;
+							if ((x >= _displayclipx1) && (x < _displayclipx2)) {
+								*pfbPixel++ = bgcolor;
+							}
+							x++;
 						}
 					}
-					for (xr=0; xr < size; xr++) {
-						*pfbPixel++ = bgcolor;
-					}
 					pfbPixel_row += _width; // setup pointer to 
-
+					y++;
 				}
 				mask = mask << 1;
 			}
 
 		} else {
+/////////////////
+			// need to build actual pixel rectangle we will output into.
+			int16_t y_char_top = y;	// remember the y
+			int16_t w =  6 * size;
+			int16_t h = 8 * size;
+
+			if(x < _displayclipx1) {	w -= (_displayclipx1-x); x = _displayclipx1; 	}
+			if((x + w - 1) >= _displayclipx2)  w = _displayclipx2  - x;
+			if(y < _displayclipy1) {	h -= (_displayclipy1 - y); y = _displayclipy1; 	}
+			if((y + h - 1) >= _displayclipy2) h = _displayclipy2 - y;
+
 			beginSPITransaction();
-			setAddr(x, y, x + 6 * size - 1, y + 8 * size - 1);
+			setAddr(x, y, x + w -1, y + h - 1);
+
+			y = y_char_top;	// restore the actual y.
 			writecommand_cont(ILI9341_RAMWR);
-			uint8_t xr, yr;
-			uint8_t mask = 0x01;
-			uint16_t color;
-			for (y=0; y < 8; y++) {
-				for (yr=0; yr < size; yr++) {
-					for (x=0; x < 5; x++) {
-						if (glcdfont[c * 5 + x] & mask) {
-							color = fgcolor;
-						} else {
-							color = bgcolor;
+			for (yc=0; (yc < 8) && (y < _displayclipy2); yc++) {
+				for (yr=0; (yr < size) && (y < _displayclipy2); yr++) {
+					x = x_char_start; 		// get our first x position...
+					if (y >= _displayclipy1) {
+						for (xc=0; xc < 5; xc++) {
+							if (glcdfont[c * 5 + x] & mask) {
+								color = fgcolor;
+							} else {
+								color = bgcolor;
+							}
+							for (xr=0; xr < size; xr++) {
+								if ((x >= _displayclipx1) && (x < _displayclipx2)) {
+									writedata16_cont(color);
+								}
+								x++;
+							}
 						}
 						for (xr=0; xr < size; xr++) {
-							writedata16_cont(color);
+							if ((x >= _displayclipx1) && (x < _displayclipx2)) {
+								writedata16_cont(bgcolor);
+							}
+							x++;
 						}
 					}
-					for (xr=0; xr < size; xr++) {
-						writedata16_cont(bgcolor);
-					}
+					y++;
 				}
 				mask = mask << 1;
 			}
