@@ -127,19 +127,42 @@ void ILI9341_t3n::updateScreen(void)					// call to say update the screen now.
 	// Will go by buffer as maybe can do interesting things?
 	if (_use_fbtft) {
 		beginSPITransaction();
-		setAddr(0, 0, _width-1, _height-1);
-		writecommand_cont(ILI9341_RAMWR);
+		if (_standard) {
+			// Doing full window. 
+			setAddr(0, 0, _width-1, _height-1);
+			writecommand_cont(ILI9341_RAMWR);
 
-		// BUGBUG doing as one shot.  Not sure if should or not or do like
-		// main code and break up into transactions...
-		uint16_t *pfbtft_end = &_pfbtft[(ILI9341_TFTWIDTH*ILI9341_TFTHEIGHT)-1];	// setup 
-		uint16_t *pftbft = _pfbtft;
+			// BUGBUG doing as one shot.  Not sure if should or not or do like
+			// main code and break up into transactions...
+			uint16_t *pfbtft_end = &_pfbtft[(ILI9341_TFTWIDTH*ILI9341_TFTHEIGHT)-1];	// setup 
+			uint16_t *pftbft = _pfbtft;
 
-		// Quick write out the data;
-		while (pftbft < pfbtft_end) {
-			writedata16_cont(*pftbft++);
+			// Quick write out the data;
+			while (pftbft < pfbtft_end) {
+				writedata16_cont(*pftbft++);
+			}
+			writedata16_last(*pftbft);
+		} else {
+			// setup just to output the clip rectangle area. 
+			setAddr(_displayclipx1, _displayclipy1, _displayclipx2-1, _displayclipy2-1);
+			writecommand_cont(ILI9341_RAMWR);
+
+			// BUGBUG doing as one shot.  Not sure if should or not or do like
+			// main code and break up into transactions...
+			uint16_t * pfbPixel_row = &_pfbtft[ _displayclipy1*_width + _displayclipx1];
+			for (uint16_t y = _displayclipy1; y < _displayclipy2; y++) {
+				uint16_t * pfbPixel = pfbPixel_row;
+				for (uint16_t x = _displayclipx1; x < (_displayclipx2-1); x++) {
+					writedata16_cont(*pfbPixel++);
+				}
+				if (y < (_displayclipy2-1))
+					writedata16_cont(*pfbPixel);
+				else	
+					writedata16_last(*pfbPixel);
+				pfbPixel_row += _width;	// setup for the next row. 
+			}
+
 		}
-		writedata16_last(*pftbft);
 		endSPITransaction();
 	}
 
