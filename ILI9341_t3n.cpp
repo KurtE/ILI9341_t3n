@@ -278,6 +278,7 @@ void ILI9341_t3n::fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 
 	// Rectangular clipping (drawChar w/big text requires this)
 	if((x >= _displayclipx2) || (y >= _displayclipy2)) return;
+	if (((x+w) <= _displayclipx1) || ((y+h) <= _displayclipy1)) return;
 	if(x < _displayclipx1) {	w -= (_displayclipx1-x); x = _displayclipx1; 	}
 	if(y < _displayclipy1) {	h -= (_displayclipy1 - y); y = _displayclipy1; 	}
 	if((x + w - 1) >= _displayclipx2)  w = _displayclipx2  - x;
@@ -412,7 +413,7 @@ void ILI9341_t3n::fillRectHGradient(int16_t x, int16_t y, int16_t w, int16_t h, 
 	uint16_t color;
 	color565toRGB14(color1,r1,g1,b1);
 	color565toRGB14(color2,r2,g2,b2);
-	dr=(r2-r1)/h; dg=(g2-g1)/h; db=(b2-b1)/h;
+	dr=(r2-r1)/w; dg=(g2-g1)/w; db=(b2-b1)/w;
 	r=r1;g=g1;b=b1;	
 	if (_use_fbtft) {
 		uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
@@ -1651,22 +1652,24 @@ void ILI9341_t3n::drawChar(int16_t x, int16_t y, unsigned char c,
 					if (y >= _displayclipy1) {
 						uint16_t * pfbPixel = pfbPixel_row;
 						for (xc=0; xc < 5; xc++) {
-							if (glcdfont[c * 5 + x] & mask) {
+							if (glcdfont[c * 5 + xc] & mask) {
 								color = fgcolor;
 							} else {
 								color = bgcolor;
 							}
 							for (xr=0; xr < size; xr++) {
 								if ((x >= _displayclipx1) && (x < _displayclipx2)) {
-									*pfbPixel++ = color;
+									*pfbPixel = color;
 								}
+								pfbPixel++;
 								x++;
 							}
 						}
 						for (xr=0; xr < size; xr++) {
 							if ((x >= _displayclipx1) && (x < _displayclipx2)) {
-								*pfbPixel++ = bgcolor;
+								*pfbPixel = bgcolor;
 							}
+							pfbPixel++;
 							x++;
 						}
 					}
@@ -1697,7 +1700,7 @@ void ILI9341_t3n::drawChar(int16_t x, int16_t y, unsigned char c,
 					x = x_char_start; 		// get our first x position...
 					if (y >= _displayclipy1) {
 						for (xc=0; xc < 5; xc++) {
-							if (glcdfont[c * 5 + x] & mask) {
+							if (glcdfont[c * 5 + xc] & mask) {
 								color = fgcolor;
 							} else {
 								color = bgcolor;
@@ -1837,7 +1840,7 @@ void ILI9341_t3n::drawFontChar(unsigned int c)
 
 	// Going to try a fast Opaque method which works similar to drawChar, which is near the speed of writerect
 	if (!opaque) {
-		while (linecount) {
+		while (linecount > 0) {
 			//Serial.printf("    linecount = %d\n", linecount);
 			uint32_t n = 1;
 			if (fetchbit(data, bitoffset++) != 0) {
@@ -1884,11 +1887,11 @@ void ILI9341_t3n::drawFontChar(unsigned int c)
 		int end_x = cursor_x_origin + delta; 
 		if ((origin_x + (int)width) > end_x)
 			end_x = origin_x + (int)width;
-		if (end_x >= _displayclipx2)  end_x = _displayclipx2 - 1;	
+		if (end_x >= _displayclipx2)  end_x = _displayclipx2;	
 		int end_y = cursor_y_origin + font->line_space; 
 		if ((origin_y + (int)height) > end_y)
 			end_y = origin_y + (int)height;
-		if (end_y >= _displayclipy2) end_y = _displayclipy2 - 1;	
+		if (end_y >= _displayclipy2) end_y = _displayclipy2;	
 		end_x--;	// setup to last one we draw
 		end_y--;
 		int start_x_min = (start_x >= _displayclipx1) ? start_x : _displayclipx1;
@@ -1935,7 +1938,7 @@ void ILI9341_t3n::drawFontChar(unsigned int c)
 			// Now lets process each of the data lines. 
 			screen_y = origin_y;
 
-			while (linecount) {
+			while (linecount > 0) {
 				//Serial.printf("    linecount = %d\n", linecount);
 				uint32_t b = fetchbit(data, bitoffset++);
 				uint32_t n;
@@ -1996,19 +1999,21 @@ void ILI9341_t3n::drawFontChar(unsigned int c)
 
 			// clear below character
 	 		while (screen_y++ <= end_y) {
-				pfbPixel = pfbPixel_row;
-				for (screen_x = start_x; screen_x <= end_x; screen_x++) {
-					if (screen_x >= _displayclipx1) {
-						*pfbPixel = textbgcolor;
+				if ((screen_y >= _displayclipy1) && (screen_y < _displayclipy2)) {
+					pfbPixel = pfbPixel_row;
+					for (screen_x = start_x; screen_x <= end_x; screen_x++) {
+						if (screen_x >= _displayclipx1) {
+							*pfbPixel = textbgcolor;
+						}
+						pfbPixel++;
 					}
-					pfbPixel++;
 				}
 				pfbPixel_row += _width;
 			}
 
 		} else {
 			beginSPITransaction();
-			//Serial.printf("SetAddr %d %d %d %d\n", start_x, start_y, end_x, end_y);
+			//Serial.printf("SetAddr %d %d %d %d\n", start_x_min, start_y_min, end_x, end_y);
 			// output rectangle we are updating... We have already clipped end_x/y, but not yet start_x/y
 			setAddr( start_x_min, start_y_min, end_x, end_y);
 			writecommand_cont(ILI9341_RAMWR);
@@ -2023,15 +2028,15 @@ void ILI9341_t3n::drawFontChar(unsigned int c)
 
 			// Now lets process each of the data lines. 
 			screen_y = origin_y;
-			while (linecount) {
-//				Serial.printf("    linecount = %d\n", linecount);
+			while (linecount > 0) {
+				//Serial.printf("    linecount = %d\n", linecount);
 				uint32_t b = fetchbit(data, bitoffset++);
 				uint32_t n;
 				if (b == 0) {
-//					Serial.println("    Single");
+					//Serial.println("    Single");
 					n = 1;
 				} else {
-//					Serial.println("    Multi");
+					//Serial.println("    Multi");
 					n = fetchbits_unsigned(data, bitoffset, 3) + 2;
 					bitoffset += 3;
 				}
@@ -2041,9 +2046,11 @@ void ILI9341_t3n::drawFontChar(unsigned int c)
 					bitoffset = bitoffset_row_start;	// we will work through these bits maybe multiple times
 					// We need to handle case where some of the bits may not be visible, but we still need to
 					// read through them
+					//Serial.printf("y:%d  %d %d %d %d\n", screen_y, start_x, origin_x, _displayclipx1, _displayclipx2);
 					if ((screen_y >= _displayclipy1) && (screen_y < _displayclipy2)) {
 						for (screen_x = start_x; screen_x < origin_x; screen_x++) {
-							if (screen_x >= _displayclipx1) {
+							if ((screen_x >= _displayclipx1) && (screen_x < _displayclipx2)) {
+								//Serial.write('-');
 								writedata16_cont(textbgcolor);
 							}
 						}
@@ -2055,17 +2062,17 @@ void ILI9341_t3n::drawFontChar(unsigned int c)
 						if (xsize > 32) xsize = 32;
 						uint32_t bits = fetchbits_unsigned(data, bitoffset, xsize);
 						uint32_t bit_mask = 1 << (xsize-1);
-//						Serial.printf("     %d %d %x %x - ", x, xsize, bits, bit_mask);
+						//Serial.printf("     %d %d %x %x - ", x, xsize, bits, bit_mask);
 						if ((screen_y >= _displayclipy1) && (screen_y < _displayclipy2)) {
 							while (bit_mask) {
 								if ((screen_x >= _displayclipx1) && (screen_x < _displayclipx2)) {
 									writedata16_cont((bits & bit_mask) ? textcolor : textbgcolor);
-//									Serial.write((bits & bit_mask) ? '*' : '.');
+									//Serial.write((bits & bit_mask) ? '*' : '.');
 								}
 								bit_mask = bit_mask >> 1;
 								screen_x++ ; // Current actual screen X
 							}
-//							Serial.println();
+							//Serial.println();
 							bitoffset += xsize;
 						}
 						x += xsize;
@@ -2074,7 +2081,9 @@ void ILI9341_t3n::drawFontChar(unsigned int c)
 						// output bg color and right hand side
 						while (screen_x++ <= end_x) {
 							writedata16_cont(textbgcolor);
+							//Serial.write('+');
 						}
+						//Serial.println();
 					}
 		 			screen_y++;
 					linecount--;
@@ -2083,7 +2092,7 @@ void ILI9341_t3n::drawFontChar(unsigned int c)
 
 			// clear below character - note reusing xcreen_x for this
 			screen_x = (end_y + 1 - screen_y) * (end_x + 1 - start_x_min); // How many bytes we need to still output
-//			Serial.printf("Clear Below: %d\n", screen_x);
+			//Serial.printf("Clear Below: %d\n", screen_x);
 			while (screen_x-- > 1) {
 				writedata16_cont(textbgcolor);
 			}

@@ -275,14 +275,26 @@ class ILI9341_t3n : public Print
 
 	// setOrigin sets an offset in display pixels where drawing to (0,0) will appear
 	// for example: setOrigin(10,10); drawPixel(5,5); will cause a pixel to be drawn at hardware pixel (15,15)
-	void setOrigin(int16_t x = 0, int16_t y = 0) { _originx = x; _originy = y; updateDisplayClip();}
+	void setOrigin(int16_t x = 0, int16_t y = 0) { 
+		_originx = x; _originy = y; 
+		//if (Serial) Serial.printf("Set Origin %d %d\n", x, y);
+		updateDisplayClip();
+	}
 	void getOrigin(int16_t* x, int16_t* y) { *x = _originx; *y = _originy; }
 
 	// setClipRect() sets a clipping rectangle (relative to any set origin) for drawing to be limited to.
 	// Drawing is also restricted to the bounds of the display
 
-	void setClipRect(int16_t x1, int16_t y1, int16_t w, int16_t h) { _clipx1 = x1; _clipy1 = y1; _clipx2 = x1+w; _clipy2 = y1+h; updateDisplayClip();}
-	void setClipRect() { _clipx1 = 0; _clipy1 = 0; _clipx2 = _width; _clipy2 = _height; updateDisplayClip(); }
+	void setClipRect(int16_t x1, int16_t y1, int16_t w, int16_t h) 
+		{ _clipx1 = x1; _clipy1 = y1; _clipx2 = x1+w; _clipy2 = y1+h; 
+			//if (Serial) Serial.printf("Set clip Rect %d %d %d %d\n", x1, y1, w, h);
+			updateDisplayClip();
+		}
+	void setClipRect() {
+			 _clipx1 = 0; _clipy1 = 0; _clipx2 = _width; _clipy2 = _height; 
+			//if (Serial) Serial.printf("clear clip Rect\n");
+			 updateDisplayClip(); 
+		}
 
 	virtual size_t write(uint8_t);
 	int16_t width(void)  { return _width; }
@@ -325,6 +337,11 @@ class ILI9341_t3n : public Print
 		_displayclipy2 = max(0,min(_clipy2+_originy,height()));
 		_invisible = (_displayclipx1 == _displayclipx2 || _displayclipy1 == _displayclipy2);
 		_standard =  (_displayclipx1 == 0) && (_displayclipx2 == _width) && (_displayclipy1 == 0) && (_displayclipy2 == _height);
+		if (Serial) {
+			//Serial.printf("UDC (%d %d)-(%d %d) %d %d\n", _displayclipx1, _displayclipy1, _displayclipx2, 
+			//	_displayclipy2, _invisible, _standard);
+
+		}
 	}
 
 	uint16_t textcolor, textbgcolor;

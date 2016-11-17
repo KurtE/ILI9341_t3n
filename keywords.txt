@@ -70,4 +70,6 @@ justReleased	KEYWORD2
 useFrameBuffer	KEYWORD2
 updateScreen	KEYWORD2
 freeFrameBuffer	KEYWORD2
-
+setOrigin	KEYWORD2
+getOrigin	KEYWORD2
+setClipRect	KEYWORD2
