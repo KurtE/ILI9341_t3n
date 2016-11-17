@@ -688,6 +688,7 @@ uint8_t ILI9341_t3n::readcommand8(uint8_t c, uint8_t index)
 }
 
 // Read Pixel at x,y and get back 16-bit packed color
+#define READ_PIXEL_PUSH_BYTE 0x3f
 uint16_t ILI9341_t3n::readPixel(int16_t x, int16_t y)
 {
 	// Now if we are in buffer mode can return real fast
@@ -772,7 +773,7 @@ void ILI9341_t3n::readRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 	while ((_pkinetisk_spi->SR & SPI_SR_EOQF) == 0)  {
 		// maybe keep queue with something in it, while waiting for that EOQF 
 		if ((_pkinetisk_spi->SR & (15 << 12)) == 0) {
-    		_pkinetisk_spi->PUSHR = 0x3f | (pcs_data << 16) | SPI_PUSHR_CTAS(0)| SPI_PUSHR_CONT;
+    		_pkinetisk_spi->PUSHR = READ_PIXEL_PUSH_BYTE | (pcs_data << 16) | SPI_PUSHR_CTAS(0)| SPI_PUSHR_CONT;
 			c--;			
 		}
 	}
@@ -783,9 +784,9 @@ void ILI9341_t3n::readRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 	}
 	while (c--) {
         	if (c) {
-            		_pkinetisk_spi->PUSHR = 0x3f | (pcs_data << 16) | SPI_PUSHR_CTAS(0)| SPI_PUSHR_CONT;
+            		_pkinetisk_spi->PUSHR = READ_PIXEL_PUSH_BYTE | (pcs_data << 16) | SPI_PUSHR_CTAS(0)| SPI_PUSHR_CONT;
         	} else {
-            		_pkinetisk_spi->PUSHR = 0x3f | (pcs_data << 16) | SPI_PUSHR_CTAS(0)| SPI_PUSHR_EOQ;
+            		_pkinetisk_spi->PUSHR = READ_PIXEL_PUSH_BYTE | (pcs_data << 16) | SPI_PUSHR_CTAS(0)| SPI_PUSHR_EOQ;
 		}
 
 		// If last byte wait until all have come in...
