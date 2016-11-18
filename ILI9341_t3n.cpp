@@ -691,8 +691,12 @@ uint8_t ILI9341_t3n::readcommand8(uint8_t c, uint8_t index)
 #define READ_PIXEL_PUSH_BYTE 0x3f
 uint16_t ILI9341_t3n::readPixel(int16_t x, int16_t y)
 {
+	//BUGBUG:: Should add some validation of X and Y
 	// Now if we are in buffer mode can return real fast
 	if (_use_fbtft) {
+		x+=_originx;
+		y+=_originy;
+
 		return _pfbtft[y*_width + x] ;
 	}
 	
@@ -707,6 +711,10 @@ uint16_t ILI9341_t3n::readPixel(int16_t x, int16_t y)
 	uint8_t r,g,b;
 
 	_pspin->beginTransaction(SPISettings(ILI9341_SPICLOCK_READ, MSBFIRST, SPI_MODE0));
+
+	// Update our origin. 
+	x+=_originx;
+	y+=_originy;
 
 	setAddr(x, y, x, y);
 	writecommand_cont(ILI9341_RAMRD); // read from RAM
@@ -737,6 +745,11 @@ uint16_t ILI9341_t3n::readPixel(int16_t x, int16_t y)
 // Now lets see if we can read in multiple pixels
 void ILI9341_t3n::readRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t *pcolors)
 {
+	// Use our Origin. 
+	x+=_originx;
+	y+=_originy;
+	//BUGBUG:: Should add some validation of X and Y
+
 	if (_use_fbtft) {
 		uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
 		for (;h>0; h--) {
@@ -818,22 +831,49 @@ void ILI9341_t3n::writeRect(int16_t x, int16_t y, int16_t w, int16_t h, const ui
 
 	x+=_originx;
 	y+=_originy;
-
+	uint16_t x_clip_start = 0;  // How many entries at start of colors to skip at start of row
+	uint16_t x_clip_end = 0;    // how many color entries to skip at end of row for clipping
 	// Rectangular clipping 
+
+	// See if the whole thing out of bounds...
 	if((x >= _displayclipx2) || (y >= _displayclipy2)) return;
-	if(x < _displayclipx1) {	w -= (_displayclipx1-x); x = _displayclipx1; 	}
-	if(y < _displayclipy1) {	h -= (_displayclipy1 - y); y = _displayclipy1; 	}
-	if((x + w - 1) >= _displayclipx2)  w = _displayclipx2  - x;
+	if (((x+w) <= _displayclipx1) || ((y+h) <= _displayclipy1)) return;
+
+	// In these cases you can not do simple clipping, as we need to synchronize the colors array with the
+	// We can clip the height as when we get to the last visible we don't have to go any farther. 
+	// also maybe starting y as we will advance the color array. 
+ 	if(y < _displayclipy1) {
+ 		int dy = (_displayclipy1 - y);
+ 		h -= dy; 
+ 		pcolors += (dy*w); // Advance color array to 
+ 		y = _displayclipy1; 	
+ 	}
+
 	if((y + h - 1) >= _displayclipy2) h = _displayclipy2 - y;
+
+	// For X see how many items in color array to skip at start of row and likewise end of row 
+	if(x < _displayclipx1) {
+		x_clip_start = _displayclipx1-x; 
+		w -= x_clip_start; 
+		x = _displayclipx1; 	
+	}
+	if((x + w - 1) >= _displayclipx2) {
+		x_clip_end = w;
+		w = _displayclipx2  - x;
+		x_clip_end -= w; 
+	} 
 
 	if (_use_fbtft) {
 		uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
 		for (;h>0; h--) {
 			uint16_t * pfbPixel = pfbPixel_row;
+			pcolors += x_clip_start;
 			for (int i = 0 ;i < w; i++) {
 				*pfbPixel++ = *pcolors++;
 			}
 			pfbPixel_row += _width;
+			pcolors += x_clip_end;
+
 		}
 		return;	
 	}
@@ -842,10 +882,12 @@ void ILI9341_t3n::writeRect(int16_t x, int16_t y, int16_t w, int16_t h, const ui
 	setAddr(x, y, x+w-1, y+h-1);
 	writecommand_cont(ILI9341_RAMWR);
 	for(y=h; y>0; y--) {
+		pcolors += x_clip_start;
 		for(x=w; x>1; x--) {
 			writedata16_cont(*pcolors++);
 		}
 		writedata16_last(*pcolors++);
+		pcolors += x_clip_end;
 	}
 	endSPITransaction();
 }
