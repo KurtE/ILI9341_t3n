@@ -161,7 +161,6 @@ void ILI9341_t3n::updateScreen(void)					// call to say update the screen now.
 					writedata16_last(*pfbPixel);
 				pfbPixel_row += _width;	// setup for the next row. 
 			}
-
 		}
 		endSPITransaction();
 	}
@@ -831,8 +830,8 @@ void ILI9341_t3n::writeRect(int16_t x, int16_t y, int16_t w, int16_t h, const ui
 
 	x+=_originx;
 	y+=_originy;
-	uint16_t x_clip_start = 0;  // How many entries at start of colors to skip at start of row
-	uint16_t x_clip_end = 0;    // how many color entries to skip at end of row for clipping
+	uint16_t x_clip_left = 0;  // How many entries at start of colors to skip at start of row
+	uint16_t x_clip_right = 0;    // how many color entries to skip at end of row for clipping
 	// Rectangular clipping 
 
 	// See if the whole thing out of bounds...
@@ -853,26 +852,26 @@ void ILI9341_t3n::writeRect(int16_t x, int16_t y, int16_t w, int16_t h, const ui
 
 	// For X see how many items in color array to skip at start of row and likewise end of row 
 	if(x < _displayclipx1) {
-		x_clip_start = _displayclipx1-x; 
-		w -= x_clip_start; 
+		x_clip_left = _displayclipx1-x; 
+		w -= x_clip_left; 
 		x = _displayclipx1; 	
 	}
 	if((x + w - 1) >= _displayclipx2) {
-		x_clip_end = w;
+		x_clip_right = w;
 		w = _displayclipx2  - x;
-		x_clip_end -= w; 
+		x_clip_right -= w; 
 	} 
 
 	if (_use_fbtft) {
 		uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
 		for (;h>0; h--) {
 			uint16_t * pfbPixel = pfbPixel_row;
-			pcolors += x_clip_start;
+			pcolors += x_clip_left;
 			for (int i = 0 ;i < w; i++) {
 				*pfbPixel++ = *pcolors++;
 			}
 			pfbPixel_row += _width;
-			pcolors += x_clip_end;
+			pcolors += x_clip_right;
 
 		}
 		return;	
@@ -882,12 +881,12 @@ void ILI9341_t3n::writeRect(int16_t x, int16_t y, int16_t w, int16_t h, const ui
 	setAddr(x, y, x+w-1, y+h-1);
 	writecommand_cont(ILI9341_RAMWR);
 	for(y=h; y>0; y--) {
-		pcolors += x_clip_start;
+		pcolors += x_clip_left;
 		for(x=w; x>1; x--) {
 			writedata16_cont(*pcolors++);
 		}
 		writedata16_last(*pcolors++);
-		pcolors += x_clip_end;
+		pcolors += x_clip_right;
 	}
 	endSPITransaction();
 }
@@ -897,23 +896,51 @@ void ILI9341_t3n::writeRect(int16_t x, int16_t y, int16_t w, int16_t h, const ui
 //					color palette data in array at palette
 void ILI9341_t3n::writeRect8BPP(int16_t x, int16_t y, int16_t w, int16_t h, const uint8_t *pixels, const uint16_t * palette )
 {
+	//Serial.printf("\nWR8: %d %d %d %d %x\n", x, y, w, h, (uint32_t)pixels);
 	x+=_originx;
 	y+=_originy;
 
+	uint16_t x_clip_left = 0;  // How many entries at start of colors to skip at start of row
+	uint16_t x_clip_right = 0;    // how many color entries to skip at end of row for clipping
 	// Rectangular clipping 
+
+	// See if the whole thing out of bounds...
 	if((x >= _displayclipx2) || (y >= _displayclipy2)) return;
-	if(x < _displayclipx1) {	w -= (_displayclipx1-x); x = _displayclipx1; 	}
-	if(y < _displayclipy1) {	h -= (_displayclipy1 - y); y = _displayclipy1; 	}
-	if((x + w - 1) >= _displayclipx2)  w = _displayclipx2  - x;
+	if (((x+w) <= _displayclipx1) || ((y+h) <= _displayclipy1)) return;
+
+	// In these cases you can not do simple clipping, as we need to synchronize the colors array with the
+	// We can clip the height as when we get to the last visible we don't have to go any farther. 
+	// also maybe starting y as we will advance the color array. 
+ 	if(y < _displayclipy1) {
+ 		int dy = (_displayclipy1 - y);
+ 		h -= dy; 
+ 		pixels += (dy*w); // Advance color array to 
+ 		y = _displayclipy1; 	
+ 	}
+
 	if((y + h - 1) >= _displayclipy2) h = _displayclipy2 - y;
 
+	// For X see how many items in color array to skip at start of row and likewise end of row 
+	if(x < _displayclipx1) {
+		x_clip_left = _displayclipx1-x; 
+		w -= x_clip_left; 
+		x = _displayclipx1; 	
+	}
+	if((x + w - 1) >= _displayclipx2) {
+		x_clip_right = w;
+		w = _displayclipx2  - x;
+		x_clip_right -= w; 
+	} 
+	//Serial.printf("WR8C: %d %d %d %d %x- %d %d\n", x, y, w, h, (uint32_t)pixels, x_clip_right, x_clip_left);
 	if (_use_fbtft) {
 		uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
 		for (;h>0; h--) {
+			pixels += x_clip_left;
 			uint16_t * pfbPixel = pfbPixel_row;
 			for (int i = 0 ;i < w; i++) {
 				*pfbPixel++ = palette[*pixels++];
 			}
+			pixels += x_clip_right;
 			pfbPixel_row += _width;
 		}
 		return;	
@@ -923,10 +950,15 @@ void ILI9341_t3n::writeRect8BPP(int16_t x, int16_t y, int16_t w, int16_t h, cons
 	setAddr(x, y, x+w-1, y+h-1);
 	writecommand_cont(ILI9341_RAMWR);
 	for(y=h; y>0; y--) {
+		pixels += x_clip_left;
+		//Serial.printf("%x: ", (uint32_t)pixels);
 		for(x=w; x>1; x--) {
+			//Serial.print(*pixels, DEC);
 			writedata16_cont(palette[*pixels++]);
 		}
+		//Serial.println(*pixels, DEC);
 		writedata16_last(palette[*pixels++]);
+		pixels += x_clip_right;
 	}
 	endSPITransaction();
 }
@@ -1029,58 +1061,86 @@ void ILI9341_t3n::writeRect2BPP(int16_t x, int16_t y, int16_t w, int16_t h, cons
 //					width must be at least 8 pixels
 void ILI9341_t3n::writeRect1BPP(int16_t x, int16_t y, int16_t w, int16_t h, const uint8_t *pixels, const uint16_t * palette )
 {
+	//Serial.printf("\nWR8: %d %d %d %d %x\n", x, y, w, h, (uint32_t)pixels);
 	x+=_originx;
 	y+=_originy;
+	uint16_t count_of_bytes_per_row = w/8;
+	uint8_t row_mask_init = 1 << 7;
+	// BUGBUG:: We assume width is multiple of 8 bits...
 
+	uint16_t x_clip_left = 0;  // How many entries at start of colors to skip at start of row
 	// Rectangular clipping 
+
+	// See if the whole thing out of bounds...
 	if((x >= _displayclipx2) || (y >= _displayclipy2)) return;
-	if(x < _displayclipx1) {	w -= (_displayclipx1-x); x = _displayclipx1; 	}
-	if(y < _displayclipy1) {	h -= (_displayclipy1 - y); y = _displayclipy1; 	}
-	if((x + w - 1) >= _displayclipx2)  w = _displayclipx2  - x;
+	if (((x+w) <= _displayclipx1) || ((y+h) <= _displayclipy1)) return;
+
+	// In these cases you can not do simple clipping, as we need to synchronize the colors array with the
+	// We can clip the height as when we get to the last visible we don't have to go any farther. 
+	// also maybe starting y as we will advance the color array. 
+	// Again assume multiple of 8 for width
+ 	if(y < _displayclipy1) {
+ 		int dy = (_displayclipy1 - y);
+ 		h -= dy; 
+ 		pixels += (dy*w)/8; // Advance color array to start note: multiple of 8
+ 		y = _displayclipy1; 	
+ 	}
+
 	if((y + h - 1) >= _displayclipy2) h = _displayclipy2 - y;
+
+	// For X see how many items in color array to skip at start of row and likewise end of row 
+	if(x < _displayclipx1) {
+		x_clip_left = _displayclipx1-x; 
+		w -= x_clip_left; 
+		x = _displayclipx1; 
+		// Now lets update pixels to the rigth offset and mask
+		pixels += x_clip_left/8;
+		row_mask_init = 1 << (7- (x_clip_left & 0x7)); 	
+	}
+	if((x + w - 1) >= _displayclipx2) {
+		w = _displayclipx2  - x;
+	} 
+
+	const uint8_t * pixels_row_start = pixels;  // remember our starting position offset into row
 
 	if (_use_fbtft) {
 		uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
 		for (;h>0; h--) {
 			uint16_t * pfbPixel = pfbPixel_row;
-			for (int i = 0 ;i < w; i+=8) {
-				*pfbPixel++ = palette[((*pixels)>>7)&0x1];
-				*pfbPixel++ = palette[((*pixels)>>6)&0x1];
-				*pfbPixel++ = palette[((*pixels)>>5)&0x1];
-				*pfbPixel++ = palette[((*pixels)>>4)&0x1];
-				*pfbPixel++ = palette[((*pixels)>>3)&0x1];
-				*pfbPixel++ = palette[((*pixels)>>2)&0x1];
-				*pfbPixel++ = palette[((*pixels)>>1)&0x1];
-				*pfbPixel++ = palette[(*pixels++)&0x1];
+			pixels = pixels_row_start;				// setup for this row
+			uint8_t mask = row_mask_init;			// Setup mask
+
+			for (int i = 0 ;i < w; i++) {
+				*pfbPixel++ = palette[(*pixels & mask)? 1 : 0];
+				mask >>= 1;
+				if (!mask) {
+					mask = 1<<7;	//setup next mask
+					pixels++;
+				}
 			}
 			pfbPixel_row += _width;
+			pixels_row_start += count_of_bytes_per_row;
 		}
 		return;	
 	}
 	beginSPITransaction();
 	setAddr(x, y, x+w-1, y+h-1);
 	writecommand_cont(ILI9341_RAMWR);
-	for(y=h; y>0; y--) {
-		for(x=w; x>8; x-=8) {
-			//unrolled loop might be faster?
-			writedata16_cont(palette[((*pixels)>>7)&0x1]);
-			writedata16_cont(palette[((*pixels)>>6)&0x1]);
-			writedata16_cont(palette[((*pixels)>>5)&0x1]);
-			writedata16_cont(palette[((*pixels)>>4)&0x1]);
-			writedata16_cont(palette[((*pixels)>>3)&0x1]);
-			writedata16_cont(palette[((*pixels)>>2)&0x1]);
-			writedata16_cont(palette[((*pixels)>>1)&0x1]);
-			writedata16_cont(palette[(*pixels++)&0x1]);
+	for (;h>0; h--) {
+		pixels = pixels_row_start;				// setup for this row
+		uint8_t mask = row_mask_init;			// Setup mask
+
+		for (int i = 0 ;i < w; i++) {
+			writedata16_cont(palette[(*pixels & mask)? 1 : 0]);
+			mask >>= 1;
+			if (!mask) {
+				mask = 1<<7;	//setup next mask
+				pixels++;
+			}
 		}
-		writedata16_cont(palette[((*pixels)>>7)&0x1]);
-		writedata16_cont(palette[((*pixels)>>6)&0x1]);
-		writedata16_cont(palette[((*pixels)>>5)&0x1]);
-		writedata16_cont(palette[((*pixels)>>4)&0x1]);
-		writedata16_cont(palette[((*pixels)>>3)&0x1]);
-		writedata16_cont(palette[((*pixels)>>2)&0x1]);
-		writedata16_cont(palette[((*pixels)>>1)&0x1]);
-		writedata16_last(palette[(*pixels++)&0x1]);
+		pixels_row_start += count_of_bytes_per_row;
 	}
+	writecommand_last(ILI9341_NOP);
 	endSPITransaction();
 }
 
