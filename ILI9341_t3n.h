@@ -22,7 +22,7 @@
 
 //Additional graphics routines by Tim Trzepacz, SoftEgg LLC added December 2015
 //(And then accidentally deleted and rewritten March 2016. Oops!)
-//Gradient support 
+//Gradient support
 //----------------
 //		fillRectVGradient	- fills area with vertical gradient
 //		fillRectHGradient	- fills area with horizontal gradient
@@ -42,7 +42,7 @@
 // writeRect2BPP - 	write 2 bit per pixel paletted bitmap
 // writeRect1BPP - 	write 1 bit per pixel paletted bitmap
 
-//String Pixel Length support 
+//String Pixel Length support
 //---------------------------
 //		strPixelLen			- gets pixel length of given ASCII string
 
@@ -50,6 +50,13 @@
 
 #ifndef _ILI9341_t3NH_
 #define _ILI9341_t3NH_
+
+// Allow us to enable or disable capabilities, particully Frame Buffer and Clipping for speed and size
+#ifndef DISABLE_ILI9341_FRAMEBUFFER
+#if defined(__MK64FX512__) || defined(__MK66FX1M0__)
+#define ENABLE_ILI9341_FRAMEBUFFER
+#endif
+#endif
 
 // Allow way to override using SPI
 
@@ -253,6 +260,13 @@ class ILI9341_t3n : public Print
 	//					width must be at least 8 pixels
 	void writeRect1BPP(int16_t x, int16_t y, int16_t w, int16_t h, const uint8_t *pixels, const uint16_t * palette );
 
+	// writeRectNBPP - 	write N(1, 2, 4, 8) bit per pixel paletted bitmap
+	//					bitmap data in array at pixels
+	//  Currently writeRect1BPP, writeRect2BPP, writeRect4BPP use this to do all of the work. 
+	// 
+	void writeRectNBPP(int16_t x, int16_t y, int16_t w, int16_t h,  uint8_t bits_per_pixel, 
+		const uint8_t *pixels, const uint16_t * palette );
+
 	// from Adafruit_GFX.h
 	void drawCircle(int16_t x0, int16_t y0, int16_t r, uint16_t color);
 	void drawCircleHelper(int16_t x0, int16_t y0, int16_t r, uint8_t cornername, uint16_t color);
@@ -272,6 +286,30 @@ class ILI9341_t3n : public Print
 	uint8_t getTextSize();
 	void setTextWrap(boolean w);
 	boolean getTextWrap();
+
+	// setOrigin sets an offset in display pixels where drawing to (0,0) will appear
+	// for example: setOrigin(10,10); drawPixel(5,5); will cause a pixel to be drawn at hardware pixel (15,15)
+	void setOrigin(int16_t x = 0, int16_t y = 0) { 
+		_originx = x; _originy = y; 
+		//if (Serial) Serial.printf("Set Origin %d %d\n", x, y);
+		updateDisplayClip();
+	}
+	void getOrigin(int16_t* x, int16_t* y) { *x = _originx; *y = _originy; }
+
+	// setClipRect() sets a clipping rectangle (relative to any set origin) for drawing to be limited to.
+	// Drawing is also restricted to the bounds of the display
+
+	void setClipRect(int16_t x1, int16_t y1, int16_t w, int16_t h) 
+		{ _clipx1 = x1; _clipy1 = y1; _clipx2 = x1+w; _clipy2 = y1+h; 
+			//if (Serial) Serial.printf("Set clip Rect %d %d %d %d\n", x1, y1, w, h);
+			updateDisplayClip();
+		}
+	void setClipRect() {
+			 _clipx1 = 0; _clipy1 = 0; _clipx2 = _width; _clipy2 = _height; 
+			//if (Serial) Serial.printf("clear clip Rect\n");
+			 updateDisplayClip(); 
+		}
+
 	virtual size_t write(uint8_t);
 	int16_t width(void)  { return _width; }
 	int16_t height(void) { return _height; }
@@ -281,6 +319,7 @@ class ILI9341_t3n : public Print
 	int16_t getCursorX(void) const { return cursor_x; }
 	int16_t getCursorY(void) const { return cursor_y; }
 	void setFont(const ILI9341_t3_font_t &f) { font = &f; }
+	void setFont() { font = NULL; }
 	void setFontAdafruit(void) { font = NULL; }
 	void drawFontChar(unsigned int c);
 	int16_t strPixelLen(char * str);
@@ -297,6 +336,28 @@ class ILI9341_t3n : public Print
 
 	int16_t _width, _height; // Display w/h as modified by current rotation
 	int16_t  cursor_x, cursor_y;
+
+	int16_t  _clipx1, _clipy1, _clipx2, _clipy2;
+	int16_t  _originx, _originy;
+	int16_t  _displayclipx1, _displayclipy1, _displayclipx2, _displayclipy2;
+	bool _invisible = false; 
+	bool _standard = true; // no bounding rectangle or origin set. 
+
+	inline void updateDisplayClip() {
+		_displayclipx1 = max(0,min(_clipx1+_originx,width()));
+		_displayclipx2 = max(0,min(_clipx2+_originx,width()));
+
+		_displayclipy1 = max(0,min(_clipy1+_originy,height()));
+		_displayclipy2 = max(0,min(_clipy2+_originy,height()));
+		_invisible = (_displayclipx1 == _displayclipx2 || _displayclipy1 == _displayclipy2);
+		_standard =  (_displayclipx1 == 0) && (_displayclipx2 == _width) && (_displayclipy1 == 0) && (_displayclipy2 == _height);
+		if (Serial) {
+			//Serial.printf("UDC (%d %d)-(%d %d) %d %d\n", _displayclipx1, _displayclipy1, _displayclipx2, 
+			//	_displayclipy2, _invisible, _standard);
+
+		}
+	}
+
 	uint16_t textcolor, textbgcolor;
 	uint8_t textsize, rotation;
 	boolean wrap; // If set, 'wrap' text at right edge of display
@@ -310,10 +371,11 @@ class ILI9341_t3n : public Print
     uint8_t _cspinmask;
     volatile uint8_t *_csport;
 
+	#ifdef ENABLE_ILI9341_FRAMEBUFFER
     // Add support for optional frame buffer
     uint16_t	*_pfbtft;						// Optional Frame buffer 
     uint8_t		_use_fbtft;						// Are we in frame buffer mode?
-
+    #endif
 
 	void setAddr(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1)
 	  __attribute__((always_inline)) {
@@ -363,13 +425,20 @@ class ILI9341_t3n : public Print
 	}
 	void HLine(int16_t x, int16_t y, int16_t w, uint16_t color)
 	  __attribute__((always_inline)) {
+		#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	  	if (_use_fbtft) {
 	  		drawFastHLine(x, y, w, color);
 	  		return;
 	  	}
-	  	if((x >= _width) || (y >= _height) || (y < 0)) return;
-		if(x < 0) {	w += x; x = 0; 	}
-		if((x+w-1) >= _width)  w = _width-x;
+	  	#endif
+	    x+=_originx;
+	    y+=_originy;
+
+	    // Rectangular clipping
+	    if((y < _displayclipy1) || (x >= _displayclipx2) || (y >= _displayclipy2)) return;
+	    if(x<_displayclipx1) { w = w - (_displayclipx1 - x); x = _displayclipx1; }
+	    if((x+w-1) >= _displayclipx2)  w = _displayclipx2-x;
+	    if (w<1) return;
 
 		setAddr(x, y, x+w-1, y);
 		writecommand_cont(ILI9341_RAMWR);
@@ -377,24 +446,38 @@ class ILI9341_t3n : public Print
 	}
 	void VLine(int16_t x, int16_t y, int16_t h, uint16_t color)
 	  __attribute__((always_inline)) {
+		#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	  	if (_use_fbtft) {
 	  		drawFastVLine(x, y, h, color);
 	  		return;
 	  	}
-		if((x >= _width) || (x < 0) || (y >= _height)) return;
-		if(y < 0) {	h += y; y = 0; 	}
-		if((y+h-1) >= _height) h = _height-y;
+	  	#endif
+		x+=_originx;
+	    y+=_originy;
+
+	    // Rectangular clipping
+	    if((x < _displayclipx1) || (x >= _displayclipx2) || (y >= _displayclipy2)) return;
+	    if(y < _displayclipy1) { h = h - (_displayclipy1 - y); y = _displayclipy1;}
+	    if((y+h-1) >= _displayclipy2) h = _displayclipy2-y;
+	    if(h<1) return;
+
 		setAddr(x, y, x, y+h-1);
 		writecommand_cont(ILI9341_RAMWR);
 		do { writedata16_cont(color); } while (--h > 0);
 	}
 	void Pixel(int16_t x, int16_t y, uint16_t color)
 	  __attribute__((always_inline)) {
-		if((x >= _width) || (x < 0) || (y >= _height) || (y < 0)) return;
+	    x+=_originx;
+	    y+=_originy;
+
+	  	if((x < _displayclipx1) ||(x >= _displayclipx2) || (y < _displayclipy1) || (y >= _displayclipy2)) return;
+
+		#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	  	if (_use_fbtft) {
 	  		_pfbtft[y*_width + x] = color;
 	  		return;
 	  	}
+	  	#endif
 		setAddr(x, y, x, y);
 		writecommand_cont(ILI9341_RAMWR);
 		writedata16_cont(color);
