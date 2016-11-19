@@ -86,9 +86,10 @@ ILI9341_t3n::ILI9341_t3n(uint8_t cs, uint8_t dc, uint8_t rst,
     _cspinmask = 0;
     _csport = NULL;
 
+	#ifdef ENABLE_ILI9341_FRAMEBUFFER
     _pfbtft = NULL;	
     _use_fbtft = 0;						// Are we in frame buffer mode?
-
+    #endif
 
 }
 
@@ -97,6 +98,7 @@ ILI9341_t3n::ILI9341_t3n(uint8_t cs, uint8_t dc, uint8_t rst,
 //=======================================================================
 uint8_t ILI9341_t3n::useFrameBuffer(boolean b)		// use the frame buffer?  First call will allocate
 {
+	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (b) {
 		// First see if we need to allocate buffer
 		if (_pfbtft == NULL) {
@@ -110,21 +112,26 @@ uint8_t ILI9341_t3n::useFrameBuffer(boolean b)		// use the frame buffer?  First 
 		_use_fbtft = 0;
 
 	return _use_fbtft;	
-
+	#else
+	return 0;
+	#endif
 }
 
 void ILI9341_t3n::freeFrameBuffer(void)						// explicit call to release the buffer
 {
+	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_pfbtft != NULL) {
 		free(_pfbtft);
 		_pfbtft = NULL;
 		_use_fbtft = 0;	// make sure the use is turned off
 	}
+	#endif
 }
 void ILI9341_t3n::updateScreen(void)					// call to say update the screen now.
 {
 	// Not sure if better here to check flag or check existence of buffer.
 	// Will go by buffer as maybe can do interesting things?
+	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_use_fbtft) {
 		beginSPITransaction();
 		if (_standard) {
@@ -164,7 +171,7 @@ void ILI9341_t3n::updateScreen(void)					// call to say update the screen now.
 		}
 		endSPITransaction();
 	}
-
+	#endif
 }			 
 
 //=======================================================================
@@ -190,10 +197,13 @@ void ILI9341_t3n::drawPixel(int16_t x, int16_t y, uint16_t color) {
 	y += _originy;
 	if((x < _displayclipx1) ||(x >= _displayclipx2) || (y < _displayclipy1) || (y >= _displayclipy2)) return;
 
+	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_use_fbtft) {
 		_pfbtft[y*_width + x] = color;
 
-	} else {
+	} else 
+	#endif
+	{
 		beginSPITransaction();
 		setAddr(x, y, x, y);
 		writecommand_cont(ILI9341_RAMWR);
@@ -212,13 +222,16 @@ void ILI9341_t3n::drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t color)
 	if((y+h-1) >= _displayclipy2) h = _displayclipy2-y;
 	if(h<1) return;
 
+	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_use_fbtft) {
 		uint16_t * pfbPixel = &_pfbtft[ y*_width + x];
 		while (h--) {
 			*pfbPixel = color;
 			pfbPixel += _width;
 		}
-	} else {
+	} else 
+	#endif
+	{
 		beginSPITransaction();
 		setAddr(x, y, x, y+h-1);
 		writecommand_cont(ILI9341_RAMWR);
@@ -241,6 +254,7 @@ void ILI9341_t3n::drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color)
 	if((x+w-1) >= _displayclipx2)  w = _displayclipx2-x;
 	if (w<1) return;
 
+	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_use_fbtft) {
 		if ((x&1) || (w&1)) {
 			uint16_t * pfbPixel = &_pfbtft[ y*_width + x];
@@ -256,7 +270,9 @@ void ILI9341_t3n::drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color)
 				w -= 2;
 			}
 		}
-	} else {
+	} else 
+	#endif
+	{
 		beginSPITransaction();
 		setAddr(x, y, x+w-1, y);
 		writecommand_cont(ILI9341_RAMWR);
@@ -270,6 +286,7 @@ void ILI9341_t3n::drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color)
 
 void ILI9341_t3n::fillScreen(uint16_t color)
 {
+	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_use_fbtft && _standard) {
 		// Speed up lifted from Franks DMA code... _standard is if no offsets and rects..
 		uint32_t color32 = (color << 16) | color;
@@ -287,7 +304,9 @@ void ILI9341_t3n::fillScreen(uint16_t color)
 			*pfbPixel++ = color32; *pfbPixel++ = color32; *pfbPixel++ = color32;*pfbPixel++ = color32;
 		}
 
-	} else {
+	} else 
+	#endif
+	{
 		fillRect(0, 0, _width, _height, color);
 	}
 }
@@ -306,6 +325,7 @@ void ILI9341_t3n::fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 	if((x + w - 1) >= _displayclipx2)  w = _displayclipx2  - x;
 	if((y + h - 1) >= _displayclipy2) h = _displayclipy2 - y;
 
+	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_use_fbtft) {
 		if ((x&1) || (w&1)) {
 			uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
@@ -329,7 +349,9 @@ void ILI9341_t3n::fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 				pfbPixel_row += (_width/2);
 			}
 		}
-	} else {
+	} else 
+	#endif
+	{
 
 		// TODO: this can result in a very long transaction time
 		// should break this into multiple transactions, even though
@@ -370,6 +392,7 @@ void ILI9341_t3n::fillRectVGradient(int16_t x, int16_t y, int16_t w, int16_t h, 
 	dr=(r2-r1)/h; dg=(g2-g1)/h; db=(b2-b1)/h;
 	r=r1;g=g1;b=b1;	
 
+	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_use_fbtft) {
 		if ((x&1) || (w&1)) {
 			uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
@@ -397,7 +420,9 @@ void ILI9341_t3n::fillRectVGradient(int16_t x, int16_t y, int16_t w, int16_t h, 
 				r+=dr;g+=dg; b+=db;
 			}
 		}
-	} else {		
+	} else 
+	#endif
+	{		
 		beginSPITransaction();
 		setAddr(x, y, x+w-1, y+h-1);
 		writecommand_cont(ILI9341_RAMWR);
@@ -437,6 +462,7 @@ void ILI9341_t3n::fillRectHGradient(int16_t x, int16_t y, int16_t w, int16_t h, 
 	color565toRGB14(color2,r2,g2,b2);
 	dr=(r2-r1)/w; dg=(g2-g1)/w; db=(b2-b1)/w;
 	r=r1;g=g1;b=b1;	
+	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_use_fbtft) {
 		uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
 		for (;h>0; h--) {
@@ -448,7 +474,9 @@ void ILI9341_t3n::fillRectHGradient(int16_t x, int16_t y, int16_t w, int16_t h, 
 			pfbPixel_row += _width;
 			r=r1;g=g1;b=b1;
 		}
-	} else {
+	} else 
+	#endif
+	{
 		beginSPITransaction();
 		setAddr(x, y, x+w-1, y+h-1);
 		writecommand_cont(ILI9341_RAMWR);
@@ -692,13 +720,14 @@ uint16_t ILI9341_t3n::readPixel(int16_t x, int16_t y)
 {
 	//BUGBUG:: Should add some validation of X and Y
 	// Now if we are in buffer mode can return real fast
+	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_use_fbtft) {
 		x+=_originx;
 		y+=_originy;
 
 		return _pfbtft[y*_width + x] ;
 	}
-	
+	#endif	
 	// First pass for other SPI busses use readRect to handle the read... 
 	if (_pspin->sizeFIFO() < 4) {
 		uint16_t colors;
@@ -749,6 +778,7 @@ void ILI9341_t3n::readRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 	y+=_originy;
 	//BUGBUG:: Should add some validation of X and Y
 
+	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_use_fbtft) {
 		uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
 		for (;h>0; h--) {
@@ -760,7 +790,7 @@ void ILI9341_t3n::readRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 		}
 		return;	
 	}
-	
+	#endif	
 
 	uint8_t dummy __attribute__((unused));
 //	uint8_t r,g,b;
@@ -862,6 +892,7 @@ void ILI9341_t3n::writeRect(int16_t x, int16_t y, int16_t w, int16_t h, const ui
 		x_clip_right -= w; 
 	} 
 
+	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_use_fbtft) {
 		uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
 		for (;h>0; h--) {
@@ -876,6 +907,7 @@ void ILI9341_t3n::writeRect(int16_t x, int16_t y, int16_t w, int16_t h, const ui
 		}
 		return;	
 	}
+	#endif
 
    	beginSPITransaction();
 	setAddr(x, y, x+w-1, y+h-1);
@@ -932,6 +964,7 @@ void ILI9341_t3n::writeRect8BPP(int16_t x, int16_t y, int16_t w, int16_t h, cons
 		x_clip_right -= w; 
 	} 
 	//Serial.printf("WR8C: %d %d %d %d %x- %d %d\n", x, y, w, h, (uint32_t)pixels, x_clip_right, x_clip_left);
+	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_use_fbtft) {
 		uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
 		for (;h>0; h--) {
@@ -945,6 +978,7 @@ void ILI9341_t3n::writeRect8BPP(int16_t x, int16_t y, int16_t w, int16_t h, cons
 		}
 		return;	
 	}
+	#endif
 
 	beginSPITransaction();
 	setAddr(x, y, x+w-1, y+h-1);
@@ -1047,6 +1081,7 @@ void ILI9341_t3n::writeRectNBPP(int16_t x, int16_t y, int16_t w, int16_t h,  uin
 
 	const uint8_t * pixels_row_start = pixels;  // remember our starting position offset into row
 
+	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_use_fbtft) {
 		uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
 		for (;h>0; h--) {
@@ -1069,6 +1104,8 @@ void ILI9341_t3n::writeRectNBPP(int16_t x, int16_t y, int16_t w, int16_t h,  uin
 		return;	
 
 	}
+	#endif
+
 	beginSPITransaction();
 	setAddr(x, y, x+w-1, y+h-1);
 	writecommand_cont(ILI9341_RAMWR);
@@ -1433,12 +1470,15 @@ void ILI9341_t3n::drawLine(int16_t x0, int16_t y0,
 // Draw a rectangle
 void ILI9341_t3n::drawRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t color)
 {
+	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_use_fbtft) {
 		drawFastHLine(x, y, w, color);
 		drawFastHLine(x, y+h-1, w, color);
 		drawFastVLine(x, y, h, color);
 		drawFastVLine(x+w-1, y, h, color);
-	} else {
+	} else 
+	#endif
+	{
 	    beginSPITransaction();
 		HLine(x, y, w, color);
 		HLine(x, y+h-1, w, color);
@@ -1715,6 +1755,7 @@ void ILI9341_t3n::drawChar(int16_t x, int16_t y, unsigned char c,
 			return;
 
 
+		#ifdef ENABLE_ILI9341_FRAMEBUFFER
 		if (_use_fbtft) {
 
 			uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
@@ -1751,7 +1792,9 @@ void ILI9341_t3n::drawChar(int16_t x, int16_t y, unsigned char c,
 				mask = mask << 1;
 			}
 
-		} else {
+		} else 
+		#endif
+		{
 			// need to build actual pixel rectangle we will output into.
 			int16_t y_char_top = y;	// remember the y
 			int16_t w =  6 * size;
@@ -1986,6 +2029,7 @@ void ILI9341_t3n::drawFontChar(unsigned int c)
 		Serial.printf("  Bounding: (%d, %d)-(%d, %d)\n", start_x, start_y, end_x, end_y);
 		Serial.printf("  mins (%d %d),\n", start_x_min, start_y_min);
 */
+		#ifdef ENABLE_ILI9341_FRAMEBUFFER
 		if (_use_fbtft) {
 			uint16_t * pfbPixel_row = &_pfbtft[ start_y*_width + start_x];
 			uint16_t * pfbPixel;
@@ -2083,7 +2127,9 @@ void ILI9341_t3n::drawFontChar(unsigned int c)
 				pfbPixel_row += _width;
 			}
 
-		} else {
+		} else 
+		#endif
+		{
 			beginSPITransaction();
 			//Serial.printf("SetAddr %d %d %d %d\n", start_x_min, start_y_min, end_x, end_y);
 			// output rectangle we are updating... We have already clipped end_x/y, but not yet start_x/y

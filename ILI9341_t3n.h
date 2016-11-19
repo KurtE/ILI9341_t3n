@@ -51,6 +51,13 @@
 #ifndef _ILI9341_t3NH_
 #define _ILI9341_t3NH_
 
+// Allow us to enable or disable capabilities, particully Frame Buffer and Clipping for speed and size
+#ifndef DISABLE_ILI9341_FRAMEBUFFER
+#if defined(__MK64FX512__) || defined(__MK66FX1M0__)
+#define ENABLE_ILI9341_FRAMEBUFFER
+#endif
+#endif
+
 // Allow way to override using SPI
 
 #ifdef __cplusplus
@@ -364,10 +371,11 @@ class ILI9341_t3n : public Print
     uint8_t _cspinmask;
     volatile uint8_t *_csport;
 
+	#ifdef ENABLE_ILI9341_FRAMEBUFFER
     // Add support for optional frame buffer
     uint16_t	*_pfbtft;						// Optional Frame buffer 
     uint8_t		_use_fbtft;						// Are we in frame buffer mode?
-
+    #endif
 
 	void setAddr(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1)
 	  __attribute__((always_inline)) {
@@ -417,10 +425,12 @@ class ILI9341_t3n : public Print
 	}
 	void HLine(int16_t x, int16_t y, int16_t w, uint16_t color)
 	  __attribute__((always_inline)) {
+		#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	  	if (_use_fbtft) {
 	  		drawFastHLine(x, y, w, color);
 	  		return;
 	  	}
+	  	#endif
 	    x+=_originx;
 	    y+=_originy;
 
@@ -436,10 +446,12 @@ class ILI9341_t3n : public Print
 	}
 	void VLine(int16_t x, int16_t y, int16_t h, uint16_t color)
 	  __attribute__((always_inline)) {
+		#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	  	if (_use_fbtft) {
 	  		drawFastVLine(x, y, h, color);
 	  		return;
 	  	}
+	  	#endif
 		x+=_originx;
 	    y+=_originy;
 
@@ -460,10 +472,12 @@ class ILI9341_t3n : public Print
 
 	  	if((x < _displayclipx1) ||(x >= _displayclipx2) || (y < _displayclipy1) || (y >= _displayclipy2)) return;
 
+		#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	  	if (_use_fbtft) {
 	  		_pfbtft[y*_width + x] = color;
 	  		return;
 	  	}
+	  	#endif
 		setAddr(x, y, x, y);
 		writecommand_cont(ILI9341_RAMWR);
 		writedata16_cont(color);
