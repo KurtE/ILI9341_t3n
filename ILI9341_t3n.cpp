@@ -969,41 +969,8 @@ void ILI9341_t3n::writeRect8BPP(int16_t x, int16_t y, int16_t w, int16_t h, cons
 //					width must be at least 2 pixels
 void ILI9341_t3n::writeRect4BPP(int16_t x, int16_t y, int16_t w, int16_t h, const uint8_t *pixels, const uint16_t * palette )
 {
-	x+=_originx;
-	y+=_originy;
-
-	// Rectangular clipping 
-	if((x >= _displayclipx2) || (y >= _displayclipy2)) return;
-	if(x < _displayclipx1) {	w -= (_displayclipx1-x); x = _displayclipx1; 	}
-	if(y < _displayclipy1) {	h -= (_displayclipy1 - y); y = _displayclipy1; 	}
-	if((x + w - 1) >= _displayclipx2)  w = _displayclipx2  - x;
-	if((y + h - 1) >= _displayclipy2) h = _displayclipy2 - y;
-
-	if (_use_fbtft) {
-		uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
-		for (;h>0; h--) {
-			uint16_t * pfbPixel = pfbPixel_row;
-			for (int i = 0 ;i < w; i+=2) {
-				*pfbPixel++ = palette[((*pixels)>>4)&0xF];
-				*pfbPixel++ = palette[(*pixels++)&0xF];
-			}
-			pfbPixel_row += _width;
-		}
-		return;	
-	}
-
-	beginSPITransaction();
-	setAddr(x, y, x+w-1, y+h-1);
-	writecommand_cont(ILI9341_RAMWR);
-	for(y=h; y>0; y--) {
-		for(x=w; x>2; x-=2) {
-			writedata16_cont(palette[((*pixels)>>4)&0xF]);
-			writedata16_cont(palette[(*pixels++)&0xF]);
-		}
-		writedata16_cont(palette[((*pixels)>>4)&0xF]);
-		writedata16_last(palette[(*pixels++)&0xF]);
-	}
-	endSPITransaction();
+	// Simply call through our helper
+	writeRectNBPP(x, y, w, h,  4, pixels, palette );
 }
 
 // writeRect2BPP - 	write 2 bit per pixel paletted bitmap
@@ -1012,63 +979,38 @@ void ILI9341_t3n::writeRect4BPP(int16_t x, int16_t y, int16_t w, int16_t h, cons
 //					width must be at least 4 pixels
 void ILI9341_t3n::writeRect2BPP(int16_t x, int16_t y, int16_t w, int16_t h, const uint8_t *pixels, const uint16_t * palette )
 {
-	x+=_originx;
-	y+=_originy;
+	// Simply call through our helper
+	writeRectNBPP(x, y, w, h,  2, pixels, palette );
 
-	// Rectangular clipping 
-	if((x >= _displayclipx2) || (y >= _displayclipy2)) return;
-	if(x < _displayclipx1) {	w -= (_displayclipx1-x); x = _displayclipx1; 	}
-	if(y < _displayclipy1) {	h -= (_displayclipy1 - y); y = _displayclipy1; 	}
-	if((x + w - 1) >= _displayclipx2)  w = _displayclipx2  - x;
-	if((y + h - 1) >= _displayclipy2) h = _displayclipy2 - y;
-
-	if (_use_fbtft) {
-		uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
-		for (;h>0; h--) {
-			uint16_t * pfbPixel = pfbPixel_row;
-			for (int i = 0 ;i < w; i+=4) {
-				*pfbPixel++ = palette[((*pixels)>>6)&0x3];
-				*pfbPixel++ = palette[((*pixels)>>4)&0x3];
-				*pfbPixel++ = palette[((*pixels)>>2)&0x3];
-				*pfbPixel++ = palette[(*pixels++)&0x3];
-			}
-			pfbPixel_row += _width;
-		}
-		return;	
-	}
-	beginSPITransaction();
-	setAddr(x, y, x+w-1, y+h-1);
-	writecommand_cont(ILI9341_RAMWR);
-	for(y=h; y>0; y--) {
-		for(x=w; x>4; x-=4) {
-			//unrolled loop might be faster?
-			writedata16_cont(palette[((*pixels)>>6)&0x3]);
-			writedata16_cont(palette[((*pixels)>>4)&0x3]);
-			writedata16_cont(palette[((*pixels)>>2)&0x3]);
-			writedata16_cont(palette[(*pixels++)&0x3]);
-		}
-		writedata16_cont(palette[((*pixels)>>6)&0x3]);
-		writedata16_cont(palette[((*pixels)>>4)&0x3]);
-		writedata16_cont(palette[((*pixels)>>2)&0x3]);
-		writedata16_last(palette[(*pixels++)&0x3]);
-	}
-	endSPITransaction();
 }
 
+///============================================================================
 // writeRect1BPP - 	write 1 bit per pixel paletted bitmap
 //					bitmap data in array at pixels, 4 bits per pixel
 //					color palette data in array at palette
 //					width must be at least 8 pixels
 void ILI9341_t3n::writeRect1BPP(int16_t x, int16_t y, int16_t w, int16_t h, const uint8_t *pixels, const uint16_t * palette )
 {
+	// Simply call through our helper
+	writeRectNBPP(x, y, w, h,  1, pixels, palette );
+}
+
+
+
+///============================================================================
+// writeRectNBPP - 	write N(1, 2, 4, 8) bit per pixel paletted bitmap
+//					bitmap data in array at pixels
+//  Currently writeRect1BPP, writeRect2BPP, writeRect4BPP use this to do all of the work. 
+void ILI9341_t3n::writeRectNBPP(int16_t x, int16_t y, int16_t w, int16_t h,  uint8_t bits_per_pixel, 
+		const uint8_t *pixels, const uint16_t * palette )
+{
 	//Serial.printf("\nWR8: %d %d %d %d %x\n", x, y, w, h, (uint32_t)pixels);
 	x+=_originx;
 	y+=_originy;
-	uint16_t count_of_bytes_per_row = w/8;
-	uint8_t row_mask_init = 1 << 7;
-	// BUGBUG:: We assume width is multiple of 8 bits...
-
-	uint16_t x_clip_left = 0;  // How many entries at start of colors to skip at start of row
+	uint8_t pixels_per_byte = 8/ bits_per_pixel;
+	uint16_t count_of_bytes_per_row = (w + pixels_per_byte -1)/pixels_per_byte;		// Round up to handle non multiples
+	uint8_t row_shift_init = 8 - bits_per_pixel;				// We shift down 6 bits by default 
+	uint8_t pixel_bit_mask = (1 << bits_per_pixel) - 1; 		// get mask to use below
 	// Rectangular clipping 
 
 	// See if the whole thing out of bounds...
@@ -1082,7 +1024,7 @@ void ILI9341_t3n::writeRect1BPP(int16_t x, int16_t y, int16_t w, int16_t h, cons
  	if(y < _displayclipy1) {
  		int dy = (_displayclipy1 - y);
  		h -= dy; 
- 		pixels += (dy*w)/8; // Advance color array to start note: multiple of 8
+ 		pixels += dy * count_of_bytes_per_row;
  		y = _displayclipy1; 	
  	}
 
@@ -1090,13 +1032,15 @@ void ILI9341_t3n::writeRect1BPP(int16_t x, int16_t y, int16_t w, int16_t h, cons
 
 	// For X see how many items in color array to skip at start of row and likewise end of row 
 	if(x < _displayclipx1) {
-		x_clip_left = _displayclipx1-x; 
+		uint16_t x_clip_left = _displayclipx1-x; 
 		w -= x_clip_left; 
 		x = _displayclipx1; 
 		// Now lets update pixels to the rigth offset and mask
-		pixels += x_clip_left/8;
-		row_mask_init = 1 << (7- (x_clip_left & 0x7)); 	
+		uint8_t x_clip_left_bytes_incr = x_clip_left / pixels_per_byte;
+		pixels += x_clip_left_bytes_incr;
+		row_shift_init = 8 - (x_clip_left - (x_clip_left_bytes_incr * pixels_per_byte) + 1) * bits_per_pixel; 	
 	}
+
 	if((x + w - 1) >= _displayclipx2) {
 		w = _displayclipx2  - x;
 	} 
@@ -1108,34 +1052,37 @@ void ILI9341_t3n::writeRect1BPP(int16_t x, int16_t y, int16_t w, int16_t h, cons
 		for (;h>0; h--) {
 			uint16_t * pfbPixel = pfbPixel_row;
 			pixels = pixels_row_start;				// setup for this row
-			uint8_t mask = row_mask_init;			// Setup mask
+			uint8_t pixel_shift = row_shift_init;			// Setup mask
 
-			for (int i = 0 ;i < w; i++) {
-				*pfbPixel++ = palette[(*pixels & mask)? 1 : 0];
-				mask >>= 1;
-				if (!mask) {
-					mask = 1<<7;	//setup next mask
+			for (int i = 0 ; i < w; i++) {
+				*pfbPixel++ = palette[((*pixels)>>pixel_shift) & pixel_bit_mask];
+				if (!pixel_shift) {
+					pixel_shift = 8 - bits_per_pixel;	//setup next mask
 					pixels++;
+				} else {
+					pixel_shift -= bits_per_pixel;
 				}
 			}
 			pfbPixel_row += _width;
 			pixels_row_start += count_of_bytes_per_row;
 		}
 		return;	
+
 	}
 	beginSPITransaction();
 	setAddr(x, y, x+w-1, y+h-1);
 	writecommand_cont(ILI9341_RAMWR);
 	for (;h>0; h--) {
 		pixels = pixels_row_start;				// setup for this row
-		uint8_t mask = row_mask_init;			// Setup mask
+		uint8_t pixel_shift = row_shift_init;			// Setup mask
 
 		for (int i = 0 ;i < w; i++) {
-			writedata16_cont(palette[(*pixels & mask)? 1 : 0]);
-			mask >>= 1;
-			if (!mask) {
-				mask = 1<<7;	//setup next mask
+			writedata16_cont(palette[((*pixels)>>pixel_shift) & pixel_bit_mask]);
+			if (!pixel_shift) {
+				pixel_shift = 8 - bits_per_pixel;	//setup next mask
 				pixels++;
+			} else {
+				pixel_shift -= bits_per_pixel;
 			}
 		}
 		pixels_row_start += count_of_bytes_per_row;
@@ -1143,7 +1090,6 @@ void ILI9341_t3n::writeRect1BPP(int16_t x, int16_t y, int16_t w, int16_t h, cons
 	writecommand_last(ILI9341_NOP);
 	endSPITransaction();
 }
-
 
 static const uint8_t init_commands[] = {
 	4, 0xEF, 0x03, 0x80, 0x02,

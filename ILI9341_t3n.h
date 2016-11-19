@@ -253,6 +253,13 @@ class ILI9341_t3n : public Print
 	//					width must be at least 8 pixels
 	void writeRect1BPP(int16_t x, int16_t y, int16_t w, int16_t h, const uint8_t *pixels, const uint16_t * palette );
 
+	// writeRectNBPP - 	write N(1, 2, 4, 8) bit per pixel paletted bitmap
+	//					bitmap data in array at pixels
+	//  Currently writeRect1BPP, writeRect2BPP, writeRect4BPP use this to do all of the work. 
+	// 
+	void writeRectNBPP(int16_t x, int16_t y, int16_t w, int16_t h,  uint8_t bits_per_pixel, 
+		const uint8_t *pixels, const uint16_t * palette );
+
 	// from Adafruit_GFX.h
 	void drawCircle(int16_t x0, int16_t y0, int16_t r, uint16_t color);
 	void drawCircleHelper(int16_t x0, int16_t y0, int16_t r, uint8_t cornername, uint16_t color);
