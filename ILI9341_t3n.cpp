@@ -1157,19 +1157,42 @@ void ILI9341_t3n::begin(void)
 {
     // verify SPI pins are valid;
 	// allow user to say use current ones...
-	if ((_mosi != 255) || (_miso != 255) || (_sclk != 255))
-	{
-		// User specified pins make sure they are valid. 
-		if (_pspin->pinIsMOSI(_mosi) && (_pspin->pinIsMISO(_miso)) && (_pspin->pinIsSCK(_sclk)))
-		{
-			//Serial.printf("MOSI:%d MISO:%d SCK:%d\n\r", _mosi, _miso, _sclk);			
-	        _pspin->setMOSI(_mosi);
-	        _pspin->setMISO(_miso);
-	        _pspin->setSCK(_sclk);
-		} else {
-        	return; // not valid pins...
+	if ((_mosi != 255) || (_miso != 255) || (_sclk != 255)) {
+		if (!(_pspin->pinIsMOSI(_mosi)) || !(_pspin->pinIsMISO(_miso)) || !(_pspin->pinIsSCK(_sclk))) {
+			#ifdef SPIN1_OBJECT_CREATED			
+			if (SPIN1.pinIsMOSI(_mosi) && SPIN1.pinIsMISO(_miso) && SPIN1.pinIsSCK(_sclk)) {
+				_pspin = &SPIN1;
+				_pkinetisk_spi = _pspin->kinetisk_spi();
+				Serial.println("ILI9341_t3n: SPIN1 automatically selected");
+			} else {
+				#ifdef SPIN2_OBJECT_CREATED			
+				if (SPIN2.pinIsMOSI(_mosi) && SPIN2.pinIsMISO(_miso) && SPIN2.pinIsSCK(_sclk)) {
+					_pspin = &SPIN2;
+					_pkinetisk_spi = _pspin->kinetisk_spi();
+					Serial.println("ILI9341_t3n: SPIN1 automatically selected");
+				} else {
+				#endif
+			#endif
+					Serial.print("ILI9341_t3n: Error not valid SPI pins:");
+					if(!(_pspin->pinIsMOSI(_mosi))) Serial.print(" MOSI");
+					if(!(_pspin->pinIsMISO(_miso))) Serial.print(" MISO");
+					if (!_pspin->pinIsSCK(_sclk)) Serial.print(" SCLK");
+					Serial.println();
+	    			return; // not valid pins...
+				#ifdef SPIN2_OBJECT_CREATED			
+	    		}
+	    		#endif
+			#ifdef SPIN1_OBJECT_CREATED			
+			}
+			#endif
+
 		}
+		//Serial.printf("MOSI:%d MISO:%d SCK:%d\n\r", _mosi, _miso, _sclk);			
+        _pspin->setMOSI(_mosi);
+        _pspin->setMISO(_miso);
+        _pspin->setSCK(_sclk);
 	}
+
 	_pspin->begin();
 	if (_pspin->pinIsChipSelect(_cs, _dc)) {
 		pcs_data = _pspin->setCS(_cs);
@@ -1182,10 +1205,10 @@ void ILI9341_t3n::begin(void)
 			pinMode(_cs, OUTPUT);
 			_csport    = portOutputRegister(digitalPinToPort(_cs));
   			_cspinmask = digitalPinToBitMask(_cs);
-  			//Serial.printf("CS(%d) not cs: %x %x\n\r", _cs, _csport, _cspinmask);
 		} else {
 			pcs_data = 0;
 			pcs_command = 0;
+  			Serial.println("ILI9341_t3n: Error not DC is not valid hardware CS pin");
 			return;
 		}
 	}
