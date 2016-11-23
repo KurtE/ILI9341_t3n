@@ -606,6 +606,9 @@ uint8_t ILI9341_t3n::readcommand8(uint8_t c, uint8_t index)
     uint16_t wTimeout = 0xffff;
     uint8_t r=0;
 
+    // Bail if not valid miso
+    if (_miso == 0xff) return 0;
+
     beginSPITransaction();
 	if (_pspin->sizeFIFO() >= 4) {
 	    while (((_pkinetisk_spi->SR) & (15 << 12)) && (--wTimeout)) ; // wait until empty
@@ -728,6 +731,9 @@ uint16_t ILI9341_t3n::readPixel(int16_t x, int16_t y)
 		return _pfbtft[y*_width + x] ;
 	}
 	#endif	
+
+   if (_miso == 0xff) return 0xffff;	// bail if not valid miso
+
 	// First pass for other SPI busses use readRect to handle the read... 
 	if (_pspin->sizeFIFO() < 4) {
 		uint16_t colors;
@@ -791,6 +797,8 @@ void ILI9341_t3n::readRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 		return;	
 	}
 	#endif	
+
+   if (_miso == 0xff) return;		// bail if not valid miso
 
 	uint8_t dummy __attribute__((unused));
 //	uint8_t r,g,b;
@@ -1173,12 +1181,27 @@ void ILI9341_t3n::begin(void)
 				} else {
 				#endif
 			#endif
+					uint8_t mosi_sck_bad = false;
 					Serial.print("ILI9341_t3n: Error not valid SPI pins:");
-					if(!(_pspin->pinIsMOSI(_mosi))) Serial.print(" MOSI");
-					if(!(_pspin->pinIsMISO(_miso))) Serial.print(" MISO");
-					if (!_pspin->pinIsSCK(_sclk)) Serial.print(" SCLK");
+					if(!(_pspin->pinIsMOSI(_mosi)))  {
+						Serial.print(" MOSI");
+						mosi_sck_bad = true;
+					}
+					if (!_pspin->pinIsSCK(_sclk)) {
+						Serial.print(" SCLK");
+						mosi_sck_bad = true;
+					}
+
+					// Maybe allow us to limp with only MISO bad
+					if(!(_pspin->pinIsMISO(_miso))) {
+						Serial.print(" MISO");
+						_miso = 0xff;	// set miso to 255 as flag it is bad
+					}
 					Serial.println();
-	    			return; // not valid pins...
+					
+					if (mosi_sck_bad) {
+	    				return; // not valid pins...
+					}
 				#ifdef SPIN2_OBJECT_CREATED			
 	    		}
 	    		#endif
@@ -1189,7 +1212,7 @@ void ILI9341_t3n::begin(void)
 		}
 		//Serial.printf("MOSI:%d MISO:%d SCK:%d\n\r", _mosi, _miso, _sclk);			
         _pspin->setMOSI(_mosi);
-        _pspin->setMISO(_miso);
+        if (_miso != 0xff) _pspin->setMISO(_miso);
         _pspin->setSCK(_sclk);
 	}
 
