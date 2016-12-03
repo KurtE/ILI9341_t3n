@@ -744,7 +744,7 @@ uint16_t ILI9341_t3n::readPixel(int16_t x, int16_t y)
 	uint8_t dummy __attribute__((unused));
 	uint8_t r,g,b;
 
-	_pspin->beginTransaction(SPISettings(ILI9341_SPICLOCK_READ, MSBFIRST, SPI_MODE0));
+	beginSPITransaction(ILI9341_SPICLOCK_READ);
 
 	// Update our origin. 
 	x+=_originx;
@@ -805,7 +805,7 @@ void ILI9341_t3n::readRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 	uint32_t txCount = w * h * 3; // number of bytes we will transmit to the display
 	uint32_t rxCount = txCount;   // number of bytes we will receive back from the display
 
-	_pspin->beginTransaction(SPISettings(ILI9341_SPICLOCK_READ, MSBFIRST, SPI_MODE0));
+	beginSPITransaction(ILI9341_SPICLOCK_READ);
 
 	setAddr(x, y, x+w-1, y+h-1);
 	writecommand_cont(ILI9341_RAMRD); // read from RAM
@@ -1217,7 +1217,8 @@ void ILI9341_t3n::begin(void)
 			pcs_command = pcs_data | _pspin->setCS(_dc);
 			pinMode(_cs, OUTPUT);
 			_csport    = portOutputRegister(digitalPinToPort(_cs));
-  			_cspinmask = digitalPinToBitMask(_cs);
+			_cspinmask = digitalPinToBitMask(_cs);
+			*_csport |= _cspinmask;
 		} else {
 			pcs_data = 0;
 			pcs_command = 0;

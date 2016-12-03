@@ -386,8 +386,8 @@ class ILI9341_t3n : public Print
 		writedata16_cont(y0);   // YSTART
 		writedata16_cont(y1);   // YEND
 	}
-	void beginSPITransaction() __attribute__((always_inline)) {
-		_pspin->beginTransaction(SPISettings(ILI9341_SPICLOCK, MSBFIRST, SPI_MODE0));
+	void beginSPITransaction(uint32_t clock = ILI9341_SPICLOCK) __attribute__((always_inline)) {
+		_pspin->beginTransaction(SPISettings(clock, MSBFIRST, SPI_MODE0));
 		if (_csport)
 			*_csport  &= ~_cspinmask;
 	}
