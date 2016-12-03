@@ -744,7 +744,7 @@ uint16_t ILI9341_t3n::readPixel(int16_t x, int16_t y)
 	uint8_t dummy __attribute__((unused));
 	uint8_t r,g,b;
 
-	_pspin->beginTransaction(SPISettings(ILI9341_SPICLOCK_READ, MSBFIRST, SPI_MODE0));
+	beginSPITransaction(ILI9341_SPICLOCK_READ);
 
 	// Update our origin. 
 	x+=_originx;
@@ -800,64 +800,54 @@ void ILI9341_t3n::readRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 
    if (_miso == 0xff) return;		// bail if not valid miso
 
-	uint8_t dummy __attribute__((unused));
-//	uint8_t r,g,b;
-	uint8_t rgb[3];		// read into an array...
-	uint8_t rgb_index = 0;
-	uint32_t c = w * h;
+	uint8_t rgb[3];               // RGB bytes received from the display
+	uint8_t rgbIdx = 0;
+	uint32_t txCount = w * h * 3; // number of bytes we will transmit to the display
+	uint32_t rxCount = txCount;   // number of bytes we will receive back from the display
 
-	_pspin->beginTransaction(SPISettings(ILI9341_SPICLOCK_READ, MSBFIRST, SPI_MODE0));
+	beginSPITransaction(ILI9341_SPICLOCK_READ);
 
 	setAddr(x, y, x+w-1, y+h-1);
 	writecommand_cont(ILI9341_RAMRD); // read from RAM
-	_pspin->waitTransmitComplete();
-	c *= 3; // number of bytes we will transmit to the display
-	// First remove all queued up receive entries. 
-	while ((_pkinetisk_spi->SR & 0xf0)) {
-		dummy = _pkinetisk_spi->POPR;	// Read a DUMMY byte but only once
-	}
-	_pkinetisk_spi->PUSHR = 0 | (pcs_data << 16) | SPI_PUSHR_CTAS(0)| SPI_PUSHR_CONT | SPI_PUSHR_EOQ;
 
+	// transmit a DUMMY byte before the color bytes
 	_pkinetisk_spi->PUSHR = 0 | (pcs_data << 16) | SPI_PUSHR_CTAS(0)| SPI_PUSHR_CONT;
 
-	while ((_pkinetisk_spi->SR & SPI_SR_EOQF) == 0)  {
-		// maybe keep queue with something in it, while waiting for that EOQF 
-		if ((_pkinetisk_spi->SR & (15 << 12)) == 0) {
-    		_pkinetisk_spi->PUSHR = READ_PIXEL_PUSH_BYTE | (pcs_data << 16) | SPI_PUSHR_CTAS(0)| SPI_PUSHR_CONT;
-			c--;			
-		}
-	}
+	// skip values returned by the queued up transfers and the current in-flight transfer
+	uint32_t sr = _pkinetisk_spi->SR;
+	uint8_t skipCount = ((sr >> 4) & 0xF) + ((sr >> 12) & 0xF) + 1;
 
-	_pkinetisk_spi->SR = SPI_SR_EOQF;  // make sure it is clear
-	while ((_pkinetisk_spi->SR & 0xf0)) {
-		dummy = _pkinetisk_spi->POPR;	// Read a DUMMY byte but only once
-	}
-	while (c--) {
-        	if (c) {
-            		_pkinetisk_spi->PUSHR = READ_PIXEL_PUSH_BYTE | (pcs_data << 16) | SPI_PUSHR_CTAS(0)| SPI_PUSHR_CONT;
-        	} else {
-            		_pkinetisk_spi->PUSHR = READ_PIXEL_PUSH_BYTE | (pcs_data << 16) | SPI_PUSHR_CTAS(0)| SPI_PUSHR_EOQ;
-		}
-
-		// If last byte wait until all have come in...
-		if (c == 0) {
-			while ((_pkinetisk_spi->SR & SPI_SR_EOQF) == 0) ;
-			_pkinetisk_spi->SR = SPI_SR_EOQF;  // make sure it is clear
-		}
-		while ((_pkinetisk_spi->SR & 0xf0) > 0x00) { // do we have at least 3 bytes in queue if so extract...
-			rgb[rgb_index++] = _pkinetisk_spi->POPR;		// Read in the next byte of the color
-			if (rgb_index == 3) {
-				*pcolors++ = color565(rgb[0],rgb[1],rgb[2]);
-				rgb_index = 0;		// set index back to 0...
+	while (txCount || rxCount) {
+		// transmit another byte if possible
+		if (txCount && ((_pkinetisk_spi->SR & 0xF000) >> 12) < _pspin->sizeFIFO()) {
+			txCount--;
+			if (txCount) {
+				_pkinetisk_spi->PUSHR = READ_PIXEL_PUSH_BYTE | (pcs_data << 16) | SPI_PUSHR_CTAS(0)| SPI_PUSHR_CONT;
+			} else {
+				_pkinetisk_spi->PUSHR = READ_PIXEL_PUSH_BYTE | (pcs_data << 16) | SPI_PUSHR_CTAS(0)| SPI_PUSHR_EOQ;
 			}
 		}
-		// like waitFiroNotFull but does not pop our return queue
-		if (_pspin->sizeFIFO() >= 4)
-			while ((_pkinetisk_spi->SR & (15 << 12)) > (3 << 12)) ;
-		else
-			while ((_pkinetisk_spi->SR & (15 << 12)) > (0 << 12)) ;
 
+		// receive another byte if possible, and either skip it or store the color
+		if (rxCount && (_pkinetisk_spi->SR & 0xF0)) {
+			rgb[rgbIdx] = _pkinetisk_spi->POPR;
+
+			if (skipCount) {
+				skipCount--;
+			} else {
+				rxCount--;
+				rgbIdx++;
+				if (rgbIdx == 3) {
+					rgbIdx = 0;
+					*pcolors++ = color565(rgb[0], rgb[1], rgb[2]);
+				}
+			}
+		}
 	}
+
+	// wait for End of Queue
+	while ((_pkinetisk_spi->SR & SPI_SR_EOQF) == 0) ;
+	_pkinetisk_spi->SR = SPI_SR_EOQF;  // make sure it is clear
 
 	endSPITransaction();
 }
@@ -1227,7 +1217,8 @@ void ILI9341_t3n::begin(void)
 			pcs_command = pcs_data | _pspin->setCS(_dc);
 			pinMode(_cs, OUTPUT);
 			_csport    = portOutputRegister(digitalPinToPort(_cs));
-  			_cspinmask = digitalPinToBitMask(_cs);
+			_cspinmask = digitalPinToBitMask(_cs);
+			*_csport |= _cspinmask;
 		} else {
 			pcs_data = 0;
 			pcs_command = 0;
