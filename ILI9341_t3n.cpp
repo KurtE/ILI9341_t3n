@@ -1167,7 +1167,7 @@ void ILI9341_t3n::begin(void)
 				if (SPIN2.pinIsMOSI(_mosi) && SPIN2.pinIsMISO(_miso) && SPIN2.pinIsSCK(_sclk)) {
 					_pspin = &SPIN2;
 					_pkinetisk_spi = _pspin->kinetisk_spi();
-					Serial.println("ILI9341_t3n: SPIN1 automatically selected");
+					Serial.println("ILI9341_t3n: SPIN2 automatically selected");
 				} else {
 				#endif
 			#endif
