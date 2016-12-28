@@ -1,5 +1,5 @@
-#ifndef _ILI9341_t3_font_ArialBold_
-#define _ILI9341_t3_font_ArialBold_
+#ifndef _ILI9341_t3n_font_ArialBold_
+#define _ILI9341_t3n_font_ArialBold_
 
 #include "ILI9341_t3n.h"
 
