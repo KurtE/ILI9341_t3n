@@ -125,6 +125,9 @@ uint8_t ILI9341_t3n::useFrameBuffer(boolean b)		// use the frame buffer?  First 
 			if (_pfbtft == NULL)
 				return 0;	// failed 
 			memset(_pfbtft, 0, CBALLOC);	
+			uint8_t dmaTXevent = _pspin->dmaTXEvent();
+
+			// BUGBUG:: check for -1 as wont work on SPI2 on T3.5
 			uint16_t *fbtft_start_dma_addr = _pfbtft;
 			uint32_t count_words_write = (CBALLOC/SCREEN_DMA_NUM_SETTINGS)/2; // Note I know the divide will give whole number
 			Serial.printf("CWW: %d %d %d\n", CBALLOC, SCREEN_DMA_NUM_SETTINGS, count_words_write);
@@ -148,7 +151,7 @@ uint8_t ILI9341_t3n::useFrameBuffer(boolean b)		// use the frame buffer?  First 
 				}
 
 				//Destination:
-				_dmasettings[i].TCD->DADDR = &SPI0_PUSHR;
+				_dmasettings[i].TCD->DADDR = &(_pkinetisk_spi->PUSHR);
 				_dmasettings[i].TCD->DOFF = 0;
 				_dmasettings[i].TCD->ATTR_DST = 1;
 				_dmasettings[i].TCD->DLASTSGA = 0;
@@ -167,7 +170,7 @@ uint8_t ILI9341_t3n::useFrameBuffer(boolean b)		// use the frame buffer?  First 
 
 			}
 			_dmatx.begin(false);
-			_dmatx.triggerAtHardwareEvent(DMAMUX_SOURCE_SPI0_TX );
+			_dmatx.triggerAtHardwareEvent(dmaTXevent);
 			_dmatx = _dmasettings[0];
 			_dmatx.attachInterrupt(dmaInterrupt);
 		}
@@ -253,8 +256,8 @@ void ILI9341_t3n::updateScreenDMA(void)					// call to say update the screen now
 	writedata16_cont(*_pfbtft);
 
 	// now lets start up the DMA
-	SPI0_RSER |= SPI_RSER_TFFF_DIRS |	 SPI_RSER_TFFF_RE;	 // Set DMA Interrupt Request Select and Enable register
-	SPI0_MCR &= ~SPI_MCR_HALT;  //Start transfers.
+	_pkinetisk_spi->RSER |= SPI_RSER_TFFF_DIRS |	 SPI_RSER_TFFF_RE;	 // Set DMA Interrupt Request Select and Enable register
+	_pkinetisk_spi->MCR &= ~SPI_MCR_HALT;  //Start transfers.
 	_dmatx.enable();
 	_dmaActiveDisplay = this;
 	_dmaActive = 1;
