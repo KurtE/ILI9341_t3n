@@ -47,6 +47,12 @@
 //		strPixelLen			- gets pixel length of given ASCII string
 
 // <\SoftEgg>
+// Also some of this comes from the DMA version of the library...
+
+/* ILI9341_t3DMA library code is placed under the MIT license
+ * Copyright (c) 2016 Frank Bösing
+ *
+*/
 
 #ifndef _ILI9341_t3NH_
 #define _ILI9341_t3NH_
@@ -55,6 +61,7 @@
 #ifndef DISABLE_ILI9341_FRAMEBUFFER
 #if defined(__MK64FX512__) || defined(__MK66FX1M0__)
 #define ENABLE_ILI9341_FRAMEBUFFER
+#define SCREEN_DMA_NUM_SETTINGS (((uint32_t)((2 * ILI9341_TFTHEIGHT * ILI9341_TFTWIDTH) / 65536UL))+1)
 #endif
 #endif
 
@@ -64,6 +71,8 @@
 #include "Arduino.h"
 #include <SPI.h>
 #include <SPIN.h>
+#include <DMAChannel.h>
+
 #endif
 
 #define ILI9341_TFTWIDTH  240
@@ -331,9 +340,14 @@ class ILI9341_t3n : public Print
 	// added support to use optional Frame buffer
 	uint8_t useFrameBuffer(boolean b);		// use the frame buffer?  First call will allocate
 	void	freeFrameBuffer(void);			// explicit call to release the buffer
-	void	updateScreen(void);			// call to say update the screen now. 
-
-
+	void	updateScreen(void);				// call to say update the screen now. 
+	void	updateScreenDMA(void);			// call to say update the screen now. 
+	void	waitScreenDMAComplete(void);
+	#ifdef ENABLE_ILI9341_FRAMEBUFFER
+	boolean	updateScreenDMAActive(void)  {return _dmaActive;}
+	#else
+	boolean	updateScreenDMAActive(void)  {return false;}
+	#endif
  protected:
  	SPINClass *_pspin;
 #ifdef KINETISK
@@ -387,6 +401,13 @@ class ILI9341_t3n : public Print
     // Add support for optional frame buffer
     uint16_t	*_pfbtft;						// Optional Frame buffer 
     uint8_t		_use_fbtft;						// Are we in frame buffer mode?
+
+    // Add DMA support. 
+	static DMASetting 	_dmasettings[SCREEN_DMA_NUM_SETTINGS];
+	static  ILI9341_t3n 		*_dmaActiveDisplay;  // Use pointer to this as a way to get back to object...
+	static volatile uint8_t  	_dmaActive;  // Use pointer to this as a way to get back to object...
+	static DMAChannel  	_dmatx;
+	static void dmaInterrupt(void);
     #endif
 
 	void setAddr(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1)
