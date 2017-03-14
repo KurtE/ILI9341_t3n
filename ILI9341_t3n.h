@@ -56,12 +56,14 @@
 
 #ifndef _ILI9341_t3NH_
 #define _ILI9341_t3NH_
+#define  ILI9341_USE_DMAMEM
 
 // Allow us to enable or disable capabilities, particully Frame Buffer and Clipping for speed and size
 #ifndef DISABLE_ILI9341_FRAMEBUFFER
 #if defined(__MK64FX512__) || defined(__MK66FX1M0__)
 #define ENABLE_ILI9341_FRAMEBUFFER
-#define SCREEN_DMA_NUM_SETTINGS (((uint32_t)((2 * ILI9341_TFTHEIGHT * ILI9341_TFTWIDTH) / 65536UL))+1)
+//#define SCREEN_DMA_NUM_SETTINGS (((uint32_t)((2 * ILI9341_TFTHEIGHT * ILI9341_TFTWIDTH) / 65536UL))+1)
+#define SCREEN_DMA_NUM_SETTINGS 3 // see if making it a constant value makes difference...
 #endif
 #endif
 
@@ -181,6 +183,9 @@ typedef struct {
 	unsigned char cap_height;
 } ILI9341_t3_font_t;
 
+#define ILI9341_DMA_INIT	0x01 	// We have init the Dma settings
+#define ILI9341_DMA_CONT	0x02 	// continuous mode
+#define ILI9341_DMA_ACTIVE  0x80    // Is currently active
 
 #ifdef __cplusplus
 // At all other speeds, ILI9241_KINETISK__pspi->beginTransaction() will use the fastest available clock
@@ -341,10 +346,11 @@ class ILI9341_t3n : public Print
 	uint8_t useFrameBuffer(boolean b);		// use the frame buffer?  First call will allocate
 	void	freeFrameBuffer(void);			// explicit call to release the buffer
 	void	updateScreen(void);				// call to say update the screen now. 
-	void	updateScreenDMA(void);			// call to say update the screen now. 
+	void	updateScreenDMA(bool update_cont = false);	// call to say update the screen optinoally turn into continuous mode. 
 	void	waitScreenDMAComplete(void);
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
-	boolean	updateScreenDMAActive(void)  {return _dmaActive;}
+	boolean	updateScreenDMAActive(void)  {return (_dma_state & ILI9341_DMA_ACTIVE);}
+	void	initDMASettings(void);
 	#else
 	boolean	updateScreenDMAActive(void)  {return false;}
 	#endif
@@ -403,10 +409,10 @@ class ILI9341_t3n : public Print
     uint8_t		_use_fbtft;						// Are we in frame buffer mode?
 
     // Add DMA support. 
-	static DMASetting 	_dmasettings[SCREEN_DMA_NUM_SETTINGS];
+	//DMASetting 	_dmasettings[SCREEN_DMA_NUM_SETTINGS+1];
 	static  ILI9341_t3n 		*_dmaActiveDisplay;  // Use pointer to this as a way to get back to object...
-	static volatile uint8_t  	_dmaActive;  // Use pointer to this as a way to get back to object...
-	static DMAChannel  	_dmatx;
+	static volatile uint8_t  	_dma_state;  		// DMA status
+	//static DMAChannel  	_dmatx;
 	static void dmaInterrupt(void);
     #endif
 

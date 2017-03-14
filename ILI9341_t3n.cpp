@@ -52,16 +52,27 @@
 #include <SPI.h>  
 
 #ifdef ENABLE_ILI9341_FRAMEBUFFER
-DMASetting 	ILI9341_t3n::_dmasettings[SCREEN_DMA_NUM_SETTINGS];
+//DMASetting 	ILI9341_t3n::_dmasettings[SCREEN_DMA_NUM_SETTINGS+1];
+//DMAChannel 	ILI9341_t3n::_dmatx;
+#ifdef ILI9341_USE_DMAMEM
+DMAMEM uint16_t ili9341_frame_buffer[ILI9341_TFTWIDTH*ILI9341_TFTHEIGHT];
+#endif
+
+DMASetting 	_dmasettings[4];
+
+DMAChannel 	_dmatx;
 ILI9341_t3n *ILI9341_t3n::_dmaActiveDisplay = 0;
-volatile uint8_t  	ILI9341_t3n::_dmaActive = 0;  // Use pointer to this as a way to get back to object...
-DMAChannel 	ILI9341_t3n::_dmatx;
+volatile uint8_t  	ILI9341_t3n::_dma_state = 0;  // Use pointer to this as a way to get back to object...
 
 void ILI9341_t3n::dmaInterrupt(void) {
+	Serial.println("DMA Interrupt");
 	///  digitalWriteFast(1,!digitalReadFast(1));
 	_dmatx.clearInterrupt();
+	// Lets try to release the CS pin
+	_dmaActiveDisplay->writecommand_last(ILI9341_NOP);
 	_dmaActiveDisplay->endSPITransaction();
-	_dmaActive = 0;
+	_dma_state &= ~ILI9341_DMA_ACTIVE;
+	_dmaActiveDisplay = 0;	// We don't have a display active any more... 
 }
 
 #endif
@@ -106,7 +117,7 @@ ILI9341_t3n::ILI9341_t3n(uint8_t cs, uint8_t dc, uint8_t rst,
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
     _pfbtft = NULL;	
     _use_fbtft = 0;						// Are we in frame buffer mode?
-	_dmaActive = 0;
+	_dma_state = 0;					// Something to let us know we have not init DMA yet
     #endif
 
 }
@@ -121,58 +132,17 @@ uint8_t ILI9341_t3n::useFrameBuffer(boolean b)		// use the frame buffer?  First 
 	if (b) {
 		// First see if we need to allocate buffer
 		if (_pfbtft == NULL) {
+#ifdef ILI9341_USE_DMAMEM
+			// try fixed buffer
+			_pfbtft = ili9341_frame_buffer;
+			Serial.printf("FB use DMAMEM %x - %x\n", (uint32_t)_pfbtft, (uint32_t)&_pfbtft[ILI9341_TFTWIDTH*ILI9341_TFTHEIGHT]);
+			Serial.printf("????? _dmasettings[0] %x %x\n", (uint32_t)&_dmasettings[0], (uint32_t)_dmasettings[0].TCD); Serial.flush();
+	#else
 			_pfbtft = (uint16_t *)malloc(CBALLOC);
+#endif
 			if (_pfbtft == NULL)
 				return 0;	// failed 
 			memset(_pfbtft, 0, CBALLOC);	
-			uint8_t dmaTXevent = _pspin->dmaTXEvent();
-
-			// BUGBUG:: check for -1 as wont work on SPI2 on T3.5
-			uint16_t *fbtft_start_dma_addr = _pfbtft;
-			uint32_t count_words_write = (CBALLOC/SCREEN_DMA_NUM_SETTINGS)/2; // Note I know the divide will give whole number
-			Serial.printf("CWW: %d %d %d\n", CBALLOC, SCREEN_DMA_NUM_SETTINGS, count_words_write);
-			// Now lets setup DMA access to this memory... 
-			for (uint8_t i = 0; i < SCREEN_DMA_NUM_SETTINGS; i++) {
-				//Source:
-				_dmasettings[i].TCD->SOFF = 2;
-				_dmasettings[i].TCD->ATTR_SRC = 1;
-				_dmasettings[i].TCD->NBYTES = 2;
-				if (i == 0) {
-					_dmasettings[0].TCD->SADDR = &_pfbtft[1];
-					_dmasettings[0].TCD->SLAST = -(count_words_write-1)*2;
-					_dmasettings[0].TCD->BITER = count_words_write - 1;
-					_dmasettings[0].TCD->CITER = count_words_write - 1;
-
-				} else {
-					_dmasettings[i].TCD->SADDR = fbtft_start_dma_addr;
-					_dmasettings[i].TCD->SLAST = -count_words_write*2;
-					_dmasettings[i].TCD->BITER = count_words_write;
-					_dmasettings[i].TCD->CITER = count_words_write;
-				}
-
-				//Destination:
-				_dmasettings[i].TCD->DADDR = &(_pkinetisk_spi->PUSHR);
-				_dmasettings[i].TCD->DOFF = 0;
-				_dmasettings[i].TCD->ATTR_DST = 1;
-				_dmasettings[i].TCD->DLASTSGA = 0;
-				if (i < (SCREEN_DMA_NUM_SETTINGS-1)) {
-					_dmasettings[i].replaceSettingsOnCompletion(_dmasettings[i + 1]);
-				} else {
-					_dmasettings[i].replaceSettingsOnCompletion(_dmasettings[0]);
-					_dmasettings[SCREEN_DMA_NUM_SETTINGS - 1].interruptAtCompletion();
-				    _dmasettings[SCREEN_DMA_NUM_SETTINGS - 1].disableOnCompletion();
-				}
-
-				fbtft_start_dma_addr += count_words_write;
-				Serial.printf("DMS %d %x: %x %d %d %d\n", i, (uint32_t)&_dmasettings[i], 
-					_dmasettings[i].TCD->SADDR, _dmasettings[i].TCD->SLAST,
-					_dmasettings[i].TCD->BITER, _dmasettings[i].TCD->CITER);
-
-			}
-			_dmatx.begin(false);
-			_dmatx.triggerAtHardwareEvent(dmaTXevent);
-			_dmatx = _dmasettings[0];
-			_dmatx.attachInterrupt(dmaInterrupt);
 		}
 		_use_fbtft = 1;
 	} else 
@@ -188,7 +158,9 @@ void ILI9341_t3n::freeFrameBuffer(void)						// explicit call to release the buf
 {
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_pfbtft != NULL) {
+		#ifndef ILI9341_USE_DMAMEM
 		free(_pfbtft);
+		#endif
 		_pfbtft = NULL;
 		_use_fbtft = 0;	// make sure the use is turned off
 	}
@@ -240,14 +212,86 @@ void ILI9341_t3n::updateScreen(void)					// call to say update the screen now.
 	}
 	#endif
 }			 
-void ILI9341_t3n::updateScreenDMA(void)					// call to say update the screen now.
+
+void dumpDMA_TCD(DMABaseClass *dmabc)
+{
+	Serial.printf("%x %x:", (uint32_t)dmabc, (uint32_t)dmabc->TCD);
+
+	const uint32_t *p = (const uint32_t *)dmabc->TCD;
+
+	for (uint8_t i=0; i<8; i++) {
+		Serial.printf("%x ", *p++);
+	}
+	Serial.println();
+}
+
+void	ILI9341_t3n::initDMASettings(void) 
+{
+//	Serial.printf("initDMASettings called %d\n", ili9341_t3n_dma_has_been_init);
+	if (_dma_state) {  // should test for init, but...
+		return;	// we already init this. 
+	}
+
+	Serial.println("InitDMASettings");
+
+	uint8_t dmaTXevent = _pspin->dmaTXEvent();
+
+	// BUGBUG:: check for -1 as wont work on SPI2 on T3.5
+//	uint16_t *fbtft_start_dma_addr = _pfbtft;
+	uint32_t count_words_write = (CBALLOC/SCREEN_DMA_NUM_SETTINGS)/2; // Note I know the divide will give whole number
+	
+	Serial.printf("CWW: %d %d %d\n", CBALLOC, SCREEN_DMA_NUM_SETTINGS, count_words_write);
+	// Now lets setup DMA access to this memory... 
+	_dmasettings[0].sourceBuffer(&_pfbtft[1], (count_words_write-1)*2);
+	_dmasettings[0].destination(_pkinetisk_spi->PUSHR);
+
+	// Hack to reset the destination to only output 2 bytes.
+	_dmasettings[0].TCD->ATTR_DST = 1;
+	_dmasettings[0].replaceSettingsOnCompletion(_dmasettings[1]);
+
+	_dmasettings[1].sourceBuffer(&_pfbtft[count_words_write], count_words_write*2);
+	_dmasettings[1].destination(_pkinetisk_spi->PUSHR);
+	_dmasettings[1].TCD->ATTR_DST = 1;
+	_dmasettings[1].replaceSettingsOnCompletion(_dmasettings[2]);
+
+	_dmasettings[2].sourceBuffer(&_pfbtft[count_words_write*2], count_words_write*2);
+	_dmasettings[2].destination(_pkinetisk_spi->PUSHR);
+	_dmasettings[2].TCD->ATTR_DST = 1;
+	_dmasettings[2].replaceSettingsOnCompletion(_dmasettings[3]);
+
+	// Sort of hack - but wrap around to output the first word again. 
+	_dmasettings[3].sourceBuffer(_pfbtft, 2);
+	_dmasettings[3].destination(_pkinetisk_spi->PUSHR);
+	_dmasettings[3].TCD->ATTR_DST = 1;
+	_dmasettings[3].replaceSettingsOnCompletion(_dmasettings[0]);
+
+	// Setup DMA main object
+	Serial.println("Setup _dmatx");
+	_dmatx.begin(true);
+	_dmatx.triggerAtHardwareEvent(dmaTXevent);
+	_dmatx = _dmasettings[0];
+	_dmatx.attachInterrupt(dmaInterrupt);
+	_dma_state = ILI9341_DMA_INIT;  // Should be first thing set!
+}
+
+
+void ILI9341_t3n::updateScreenDMA(bool update_cont)					// call to say update the screen now.
 {
 	// Not sure if better here to check flag or check existence of buffer.
 	// Will go by buffer as maybe can do interesting things?
 	// BUGBUG:: only handles full screen so bail on the rest of it...
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (!_use_fbtft) return;
+
+	// Init DMA settings. 
+	initDMASettings();
+
+	// In this case we will only run through once...
+	_dmasettings[3].interruptAtCompletion();
+	_dmasettings[3].disableOnCompletion();
+
 	beginSPITransaction();
+
 	// Doing full window. 
 	setAddr(0, 0, _width-1, _height-1);
 	writecommand_cont(ILI9341_RAMWR);
@@ -256,18 +300,31 @@ void ILI9341_t3n::updateScreenDMA(void)					// call to say update the screen now
 	writedata16_cont(*_pfbtft);
 
 	// now lets start up the DMA
+#if 1
+	Serial.printf("DMA dump TCDs %d\n", _dmatx.channel);
+	dumpDMA_TCD(&_dmatx);
+	dumpDMA_TCD(&_dmasettings[0]);
+	dumpDMA_TCD(&_dmasettings[1]);
+	dumpDMA_TCD(&_dmasettings[2]);
+	dumpDMA_TCD(&_dmasettings[3]);
+#endif
+//	volatile uint16_t  biter = _dmatx.TCD->BITER;
+	//DMA_CDNE_CDNE(_dmatx.channel);
+//	_dmatx = _dmasettings[0];
+//	_dmatx.TCD->BITER = biter;
+
 	_pkinetisk_spi->RSER |= SPI_RSER_TFFF_DIRS |	 SPI_RSER_TFFF_RE;	 // Set DMA Interrupt Request Select and Enable register
 	_pkinetisk_spi->MCR &= ~SPI_MCR_HALT;  //Start transfers.
 	_dmatx.enable();
 	_dmaActiveDisplay = this;
-	_dmaActive = 1;
+	_dma_state |= ILI9341_DMA_ACTIVE;
 	#endif
 }			 
 
 void ILI9341_t3n::waitScreenDMAComplete(void) 
 {
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
-	while (_dmaActive) {
+	while ((_dma_state & ILI9341_DMA_ACTIVE)) {
 		asm volatile("wfi");
 	};
 	#endif	
@@ -1347,6 +1404,8 @@ void ILI9341_t3n::begin(void)
 {
     // verify SPI pins are valid;
 	// allow user to say use current ones...
+	Serial.printf("????? _dmasettings[0] %x %x\n", (uint32_t)&_dmasettings[0], (uint32_t)_dmasettings[0].TCD); Serial.flush();
+
 	if ((_mosi != 255) || (_miso != 255) || (_sclk != 255)) {
 		if (!(_pspin->pinIsMOSI(_mosi)) || !(_pspin->pinIsMISO(_miso)) || !(_pspin->pinIsSCK(_sclk))) {
 			#ifdef SPIN1_OBJECT_CREATED			
