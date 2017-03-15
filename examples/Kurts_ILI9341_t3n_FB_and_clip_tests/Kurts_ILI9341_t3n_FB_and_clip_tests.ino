@@ -1,5 +1,5 @@
-#include <font_Arial.h>
-#include <font_ArialBoldX.h>
+#include <ili9341_t3n_font_Arial.h>
+#include <ili9341_t3n_font_ArialBold.h>
 #include <ILI9341_t3n.h>
 
 #include <SPIN.h>
@@ -23,9 +23,10 @@
 #endif
 ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, TFT_RST, TFT_MOSI, TFT_SCK, TFT_MISO, &SPIN);
 Adafruit_GFX_Button button;
-uint8_t use_fb = 0;
+uint8_t use_dma = 0;
 uint8_t use_clip_rect = 0;
 uint8_t use_set_origin = 0;
+uint8_t use_fb = 0;
 
 #define ORIGIN_TEST_X 50
 #define ORIGIN_TEST_Y 50
@@ -33,6 +34,8 @@ uint8_t use_set_origin = 0;
 void setup() {
   while (!Serial && (millis() < 4000)) ;
   Serial.begin(115200);
+
+
   tft.begin();
   tft.setRotation(3);
   tft.fillScreen(ILI9341_BLACK);
@@ -86,7 +89,7 @@ void SetupOrClearClipRectAndOffsets() {
 }
 
 
-uint16_t palette[16];  // Should probably be 256, but I don't use many colors...
+uint16_t palette[256];  // Should probably be 256, but I don't use many colors...
 uint16_t pixel_data[2500];
 const uint8_t pict1bpp[] = {0xff, 0xff, 0xc0, 0x03, 0xa0, 0x05, 0x90, 0x9, 0x88, 0x11, 0x84, 0x21, 0x82, 0x41, 0x81, 0x81,
                             0x81, 0x81, 0x82, 0x41, 0x84, 0x21, 0x88, 0x11, 0x90, 0x09, 0xa0, 0x05, 0xc0, 0x03, 0xff, 0xff
@@ -202,11 +205,21 @@ void drawTestScreen() {
   tft.setFontAdafruit();
   button.drawButton();
 
-  tft.updateScreen();
-
+  if (use_dma) {
+    tft.updateScreenDMA(); 
+  } else {
+    tft.updateScreen();
+  }
   Serial.println(millis() - start_time, DEC);
 
-  use_fb = !use_fb;
+  if (use_dma && use_fb) {
+    delay(500);
+    Serial.printf("DMA error status: %x\n", DMA_ES);
+  }
+
+  use_fb = use_fb ? 0 : 1 ;
+  Serial.println(use_fb, DEC);
+
 
 }
 
@@ -237,17 +250,61 @@ void drawTextScreen(bool fOpaque) {
   Serial.printf("Use FB: %d OP: %d, DT: %d OR: %d\n", use_fb, fOpaque, use_set_origin, millis() - start_time);
 }
 
+//=============================================================================
+// Try continuous update
+//=============================================================================
+void testDMAContUpdate() {
+  // Force frame buffer on
+  Serial.printf("continuous DMA udpate test - Frame mode on\n"); Serial.flush();
+      use_fb = 1; //
+  
+  tft.useFrameBuffer(use_fb);
+  tft.fillScreen(ILI9341_GREEN);
+
+  tft.updateScreenDMA(true);
+
+  uint32_t frame_count;  
+
+  while ((frame_count = tft.frameCount()) < 10) yield();
+  tft.fillScreen(ILI9341_YELLOW);
+
+  while ((frame_count = tft.frameCount()) < 20) yield();
+  tft.fillScreen(ILI9341_RED);
+
+  while ((frame_count = tft.frameCount()) < 30) yield();
+  tft.fillScreen(ILI9341_BLACK);
+
+  while ((frame_count = tft.frameCount()) < 40) yield();
+
+  tft.setCursor(0, 100);
+  tft.setFont(Arial_20_Bold);
+  tft.println("DONE");
+
+  tft.endUpdateScreenDMA();
+
+  Serial.println("Finished test");
+
+
+}
+
 void loop(void) {
   // See if any text entered
   int ich;
   if ((ich = Serial.read()) != -1) {
-    while (Serial.read() != -1) ;
+    while (Serial.read() != -1) delay(1);
     if (ich == 'c') {
       use_clip_rect = !use_clip_rect;
       if (use_clip_rect) Serial.println("Clip Rectangle Turned on");
       else Serial.println("Clip Rectangle turned off");
       return;
     }
+    if (ich == 'd') {
+      use_dma = !use_dma;
+      if (use_dma) Serial.println("DMA Turned on");
+      else Serial.println("DMA turned off");
+      return;
+    }
+
     if (ich == 's') {
       use_set_origin = !use_set_origin;
       if (use_set_origin) Serial.printf("Set origin to %d, %d\n", ORIGIN_TEST_X, ORIGIN_TEST_Y);
@@ -258,6 +315,9 @@ void loop(void) {
       drawTextScreen(1);
     else if (ich == 't')
       drawTextScreen(0);
+    else if (ich == 'r') {
+      testDMAContUpdate();
+    }
     else
       drawTestScreen();
   }

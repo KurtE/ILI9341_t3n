@@ -63,16 +63,23 @@ DMASetting 	_dmasettings[4];
 DMAChannel 	_dmatx;
 ILI9341_t3n *ILI9341_t3n::_dmaActiveDisplay = 0;
 volatile uint8_t  	ILI9341_t3n::_dma_state = 0;  // Use pointer to this as a way to get back to object...
+volatile uint32_t	ILI9341_t3n::_dma_frame_count = 0;	// Can return a frame count...
 
 void ILI9341_t3n::dmaInterrupt(void) {
 	Serial.println("DMA Interrupt");
 	///  digitalWriteFast(1,!digitalReadFast(1));
+	_dma_frame_count++;
 	_dmatx.clearInterrupt();
-	// Lets try to release the CS pin
-	_dmaActiveDisplay->writecommand_last(ILI9341_NOP);
-	_dmaActiveDisplay->endSPITransaction();
-	_dma_state &= ~ILI9341_DMA_ACTIVE;
-	_dmaActiveDisplay = 0;	// We don't have a display active any more... 
+
+	// See if we are in continuous mode or not..
+	if ((_dma_state & ILI9341_DMA_CONT) == 0) {
+		// We are in single refresh mode or the user has called cancel so
+		// Lets try to release the CS pin
+		_dmaActiveDisplay->writecommand_last(ILI9341_NOP);
+		_dmaActiveDisplay->endSPITransaction();
+		_dma_state &= ~ILI9341_DMA_ACTIVE;
+		_dmaActiveDisplay = 0;	// We don't have a display active any more... 
+	}
 }
 
 #endif
@@ -286,9 +293,22 @@ void ILI9341_t3n::updateScreenDMA(bool update_cont)					// call to say update th
 	// Init DMA settings. 
 	initDMASettings();
 
-	// In this case we will only run through once...
-	_dmasettings[3].interruptAtCompletion();
-	_dmasettings[3].disableOnCompletion();
+	// BUGBUG:: Should check if it is already running or not. 
+	if (update_cont) {
+		// Try to link in #3 into the chain
+		_dmasettings[2].replaceSettingsOnCompletion(_dmasettings[3]);
+		_dmasettings[2].TCD->CSR &= ~(DMA_TCD_CSR_INTMAJOR | DMA_TCD_CSR_DREQ);  // Don't interrupt on this one... 
+		_dmasettings[3].interruptAtCompletion();
+		_dmasettings[3].TCD->CSR &= ~(DMA_TCD_CSR_DREQ);  // Don't disable on this one  
+		_dma_state |= ILI9341_DMA_CONT;
+	} else {
+		// In this case we will only run through once...
+		_dmasettings[2].replaceSettingsOnCompletion(_dmasettings[0]);
+		_dmasettings[2].interruptAtCompletion();
+		_dmasettings[2].disableOnCompletion();
+		_dma_state &= ~ILI9341_DMA_CONT;
+	}
+
 
 	beginSPITransaction();
 
@@ -312,7 +332,7 @@ void ILI9341_t3n::updateScreenDMA(bool update_cont)					// call to say update th
 	//DMA_CDNE_CDNE(_dmatx.channel);
 //	_dmatx = _dmasettings[0];
 //	_dmatx.TCD->BITER = biter;
-
+	_dma_frame_count = 0;  // Set frame count back to zero. 
 	_pkinetisk_spi->RSER |= SPI_RSER_TFFF_DIRS |	 SPI_RSER_TFFF_RE;	 // Set DMA Interrupt Request Select and Enable register
 	_pkinetisk_spi->MCR &= ~SPI_MCR_HALT;  //Start transfers.
 	_dmatx.enable();
@@ -321,6 +341,14 @@ void ILI9341_t3n::updateScreenDMA(bool update_cont)					// call to say update th
 	#endif
 }			 
 
+void ILI9341_t3n::endUpdateScreenDMA() {
+	// make sure it is on
+	if (_dma_state & ILI9341_DMA_CONT) {
+		_dma_state &= ~ILI9341_DMA_CONT; // Turn of the continueous mode
+		_dmasettings[3].disableOnCompletion();
+	}
+}
+	
 void ILI9341_t3n::waitScreenDMAComplete(void) 
 {
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER

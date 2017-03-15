@@ -348,6 +348,9 @@ class ILI9341_t3n : public Print
 	void	updateScreen(void);				// call to say update the screen now. 
 	void	updateScreenDMA(bool update_cont = false);	// call to say update the screen optinoally turn into continuous mode. 
 	void	waitScreenDMAComplete(void);
+	void	endUpdateScreenDMA();			 // Turn of the continueous mode fla
+
+	uint32_t frameCount() {return _dma_frame_count; }
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	boolean	updateScreenDMAActive(void)  {return (_dma_state & ILI9341_DMA_ACTIVE);}
 	void	initDMASettings(void);
@@ -412,6 +415,7 @@ class ILI9341_t3n : public Print
 	//DMASetting 	_dmasettings[SCREEN_DMA_NUM_SETTINGS+1];
 	static  ILI9341_t3n 		*_dmaActiveDisplay;  // Use pointer to this as a way to get back to object...
 	static volatile uint8_t  	_dma_state;  		// DMA status
+	static volatile uint32_t	_dma_frame_count;	// Can return a frame count...
 	//static DMAChannel  	_dmatx;
 	static void dmaInterrupt(void);
     #endif
