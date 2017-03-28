@@ -346,7 +346,7 @@ class ILI9341_t3n : public Print
 	uint8_t useFrameBuffer(boolean b);		// use the frame buffer?  First call will allocate
 	void	freeFrameBuffer(void);			// explicit call to release the buffer
 	void	updateScreen(void);				// call to say update the screen now. 
-	void	updateScreenDMA(bool update_cont = false);	// call to say update the screen optinoally turn into continuous mode. 
+	bool	startUpdateScreenDMA(bool update_cont = false);	// call to say update the screen optinoally turn into continuous mode. 
 	void	waitScreenDMAComplete(void);
 	void	endUpdateScreenDMA();			 // Turn of the continueous mode fla
 
@@ -412,11 +412,11 @@ class ILI9341_t3n : public Print
     uint8_t		_use_fbtft;						// Are we in frame buffer mode?
 
     // Add DMA support. 
-	//DMASetting 	_dmasettings[SCREEN_DMA_NUM_SETTINGS+1];
 	static  ILI9341_t3n 		*_dmaActiveDisplay;  // Use pointer to this as a way to get back to object...
 	static volatile uint8_t  	_dma_state;  		// DMA status
 	static volatile uint32_t	_dma_frame_count;	// Can return a frame count...
-	//static DMAChannel  	_dmatx;
+	static DMASetting 	_dmasettings[4];
+	static DMAChannel  	_dmatx;
 	static void dmaInterrupt(void);
     #endif
 

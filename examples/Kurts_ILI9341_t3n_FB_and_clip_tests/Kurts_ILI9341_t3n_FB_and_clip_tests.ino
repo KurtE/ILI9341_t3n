@@ -206,7 +206,8 @@ void drawTestScreen() {
   button.drawButton();
 
   if (use_dma) {
-    tft.updateScreenDMA(); 
+    // BUGBUG Maybe should check return value... 
+    tft.startUpdateScreenDMA(); 
   } else {
     tft.updateScreen();
   }
@@ -261,7 +262,7 @@ void testDMAContUpdate() {
   tft.useFrameBuffer(use_fb);
   tft.fillScreen(ILI9341_GREEN);
 
-  tft.updateScreenDMA(true);
+  tft.startUpdateScreenDMA(true);
 
   uint32_t frame_count;  
 

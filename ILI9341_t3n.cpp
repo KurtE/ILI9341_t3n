@@ -52,13 +52,11 @@
 #include <SPI.h>  
 
 #ifdef ENABLE_ILI9341_FRAMEBUFFER
-//DMASetting 	ILI9341_t3n::_dmasettings[SCREEN_DMA_NUM_SETTINGS+1];
-//DMAChannel 	ILI9341_t3n::_dmatx;
+DMASetting 	ILI9341_t3n::_dmasettings[4];
+DMAChannel 	ILI9341_t3n::_dmatx;
 #ifdef ILI9341_USE_DMAMEM
 DMAMEM uint16_t ili9341_frame_buffer[ILI9341_TFTWIDTH*ILI9341_TFTHEIGHT];
 #endif
-
-DMASetting 	_dmasettings[4];
 
 DMAChannel 	_dmatx;
 ILI9341_t3n *ILI9341_t3n::_dmaActiveDisplay = 0;
@@ -66,7 +64,7 @@ volatile uint8_t  	ILI9341_t3n::_dma_state = 0;  // Use pointer to this as a way
 volatile uint32_t	ILI9341_t3n::_dma_frame_count = 0;	// Can return a frame count...
 
 void ILI9341_t3n::dmaInterrupt(void) {
-	Serial.println("DMA Interrupt");
+	//Serial.println("DMA Interrupt");
 	///  digitalWriteFast(1,!digitalReadFast(1));
 	_dma_frame_count++;
 	_dmatx.clearInterrupt();
@@ -142,8 +140,6 @@ uint8_t ILI9341_t3n::useFrameBuffer(boolean b)		// use the frame buffer?  First 
 #ifdef ILI9341_USE_DMAMEM
 			// try fixed buffer
 			_pfbtft = ili9341_frame_buffer;
-			Serial.printf("FB use DMAMEM %x - %x\n", (uint32_t)_pfbtft, (uint32_t)&_pfbtft[ILI9341_TFTWIDTH*ILI9341_TFTHEIGHT]);
-			Serial.printf("????? _dmasettings[0] %x %x\n", (uint32_t)&_dmasettings[0], (uint32_t)_dmasettings[0].TCD); Serial.flush();
 	#else
 			_pfbtft = (uint16_t *)malloc(CBALLOC);
 #endif
@@ -239,7 +235,7 @@ void	ILI9341_t3n::initDMASettings(void)
 		return;	// we already init this. 
 	}
 
-	Serial.println("InitDMASettings");
+	//Serial.println("InitDMASettings");
 
 	uint8_t dmaTXevent = _pspin->dmaTXEvent();
 
@@ -247,7 +243,7 @@ void	ILI9341_t3n::initDMASettings(void)
 //	uint16_t *fbtft_start_dma_addr = _pfbtft;
 	uint32_t count_words_write = (CBALLOC/SCREEN_DMA_NUM_SETTINGS)/2; // Note I know the divide will give whole number
 	
-	Serial.printf("CWW: %d %d %d\n", CBALLOC, SCREEN_DMA_NUM_SETTINGS, count_words_write);
+	//Serial.printf("CWW: %d %d %d\n", CBALLOC, SCREEN_DMA_NUM_SETTINGS, count_words_write);
 	// Now lets setup DMA access to this memory... 
 	_dmasettings[0].sourceBuffer(&_pfbtft[1], (count_words_write-1)*2);
 	_dmasettings[0].destination(_pkinetisk_spi->PUSHR);
@@ -273,7 +269,7 @@ void	ILI9341_t3n::initDMASettings(void)
 	_dmasettings[3].replaceSettingsOnCompletion(_dmasettings[0]);
 
 	// Setup DMA main object
-	Serial.println("Setup _dmatx");
+	//Serial.println("Setup _dmatx");
 	_dmatx.begin(true);
 	_dmatx.triggerAtHardwareEvent(dmaTXevent);
 	_dmatx = _dmasettings[0];
@@ -282,18 +278,22 @@ void	ILI9341_t3n::initDMASettings(void)
 }
 
 
-void ILI9341_t3n::updateScreenDMA(bool update_cont)					// call to say update the screen now.
+bool ILI9341_t3n::startUpdateScreenDMA(bool update_cont)					// call to say update the screen now.
 {
 	// Not sure if better here to check flag or check existence of buffer.
 	// Will go by buffer as maybe can do interesting things?
 	// BUGBUG:: only handles full screen so bail on the rest of it...
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
-	if (!_use_fbtft) return;
+	if (!_use_fbtft) return false;
 
 	// Init DMA settings. 
 	initDMASettings();
 
-	// BUGBUG:: Should check if it is already running or not. 
+	// Don't start one if already active.
+	if (_dma_state & ILI9341_DMA_ACTIVE) {
+		return false;
+	}
+
 	if (update_cont) {
 		// Try to link in #3 into the chain
 		_dmasettings[2].replaceSettingsOnCompletion(_dmasettings[3]);
@@ -338,7 +338,11 @@ void ILI9341_t3n::updateScreenDMA(bool update_cont)					// call to say update th
 	_dmatx.enable();
 	_dmaActiveDisplay = this;
 	_dma_state |= ILI9341_DMA_ACTIVE;
+	return true;
+    #else
+    return false;     // no frame buffer so will never start... 
 	#endif
+
 }			 
 
 void ILI9341_t3n::endUpdateScreenDMA() {
