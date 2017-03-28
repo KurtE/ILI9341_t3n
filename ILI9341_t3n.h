@@ -175,9 +175,13 @@ typedef struct {
 
 #ifdef __cplusplus
 // At all other speeds, ILI9241_KINETISK__pspi->beginTransaction() will use the fastest available clock
+#ifdef KINETISK
 #define ILI9341_SPICLOCK 30000000
 #define ILI9341_SPICLOCK_READ 2000000
-
+#else
+#define ILI9341_SPICLOCK 30000000
+#define ILI9341_SPICLOCK_READ 20000000
+#endif
 class ILI9341_t3n : public Print
 {
   public:
@@ -332,7 +336,12 @@ class ILI9341_t3n : public Print
 
  protected:
  	SPINClass *_pspin;
+#ifdef KINETISK
  	KINETISK_SPI_t *_pkinetisk_spi;
+#endif
+#ifdef KINETISL
+ 	KINETISL_SPI_t *_pkinetisl_spi;
+#endif
 
 	int16_t _width, _height; // Display w/h as modified by current rotation
 	int16_t  cursor_x, cursor_y;
@@ -370,7 +379,10 @@ class ILI9341_t3n : public Print
 	// add support to allow only one hardware CS (used for dc)
     uint8_t _cspinmask;
     volatile uint8_t *_csport;
-
+#ifdef KINETISL
+    volatile uint8_t  *_dcport;
+    uint8_t _dcpinmask;
+#endif
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
     // Add support for optional frame buffer
     uint16_t	*_pfbtft;						// Optional Frame buffer 
@@ -396,6 +408,7 @@ class ILI9341_t3n : public Print
 			*_csport |= _cspinmask;
 		_pspin->endTransaction();
 	}
+#ifdef KINETISK	
 	void writecommand_cont(uint8_t c) __attribute__((always_inline)) {
 		_pkinetisk_spi->PUSHR = c | (pcs_command << 16) | SPI_PUSHR_CTAS(0) | SPI_PUSHR_CONT;
 		_pspin->waitFifoNotFull();
@@ -423,6 +436,123 @@ class ILI9341_t3n : public Print
 		_pkinetisk_spi->PUSHR = d | (pcs_data << 16) | SPI_PUSHR_CTAS(1) | SPI_PUSHR_EOQ;
 		_pspin->waitTransmitComplete(mcr);
 	}
+#endif
+// Lets see how hard to make it work OK with T-LC
+#ifdef KINETISL
+	uint8_t _dcpinAsserted;
+	uint8_t _data_sent_not_completed;
+	void waitTransmitComplete()  {
+		while (_data_sent_not_completed) {
+			uint16_t timeout_count = 0xff; // hopefully enough 
+			while (!(_pkinetisl_spi->S & SPI_S_SPRF) && timeout_count--) ; // wait 
+			uint8_t d __attribute__((unused));
+			d = _pkinetisl_spi->DL;
+			d = _pkinetisl_spi->DH;
+			_data_sent_not_completed--; // We hopefully received our data...
+		}
+	}
+	uint16_t waitTransmitCompleteReturnLast()  {
+		uint16_t d = 0;
+		while (_data_sent_not_completed) {
+			uint16_t timeout_count = 0xff; // hopefully enough 
+			while (!(_pkinetisl_spi->S & SPI_S_SPRF) && timeout_count--) ; // wait 
+			d = (_pkinetisl_spi->DH << 8) | _pkinetisl_spi->DL;
+			_data_sent_not_completed--; // We hopefully received our data...
+		}
+		return d;
+	}
+
+	void setCommandMode() __attribute__((always_inline)) {
+		if (!_dcpinAsserted) {
+			waitTransmitComplete();
+			*_dcport  &= ~_dcpinmask;
+			_dcpinAsserted = 1;
+		}
+	}
+
+	void setDataMode() __attribute__((always_inline)) {
+		if (_dcpinAsserted) {
+			waitTransmitComplete();
+			*_dcport  |= _dcpinmask;
+			_dcpinAsserted = 0;
+		}
+	}
+
+	void outputToSPI(uint8_t c) {
+		if (_pkinetisl_spi->C2 & SPI_C2_SPIMODE) {
+			// Wait to change modes until any pending output has been done.
+			waitTransmitComplete();
+			_pkinetisl_spi->C2 = 0; // make sure 8 bit mode.
+		}
+		while (!(_pkinetisl_spi->S & SPI_S_SPTEF)) ; // wait if output buffer busy.
+		// Clear out buffer if there is something there...
+		if  ((_pkinetisl_spi->S & SPI_S_SPRF)) {
+			uint8_t d __attribute__((unused));
+			d = _pkinetisl_spi->DL;
+			_data_sent_not_completed--;
+		} 
+		_pkinetisl_spi->DL = c; // output byte
+		_data_sent_not_completed++; // let system know we sent something	
+	}
+
+	void outputToSPI16(uint16_t data)  {
+		if (!(_pkinetisl_spi->C2 & SPI_C2_SPIMODE)) {
+			// Wait to change modes until any pending output has been done.
+			waitTransmitComplete();
+			_pkinetisl_spi->C2 = SPI_C2_SPIMODE; // make sure 8 bit mode.
+		}
+		uint8_t s;
+		do {
+			s = _pkinetisl_spi->S;
+			 // wait if output buffer busy.
+			// Clear out buffer if there is something there...
+			if  ((s & SPI_S_SPRF)) {
+				uint8_t d __attribute__((unused));
+				d = _pkinetisl_spi->DL;
+				d = _pkinetisl_spi->DH;
+				_data_sent_not_completed--; 	// let system know we sent something	
+			}
+
+		} while (!(s & SPI_S_SPTEF) || (s & SPI_S_SPRF));
+
+		_pkinetisl_spi->DL = data; 		// output low byte
+		_pkinetisl_spi->DH = data >> 8; // output high byte
+		_data_sent_not_completed++; 	// let system know we sent something	
+	}
+
+	void writecommand_cont(uint8_t c)  {
+		setCommandMode();
+		outputToSPI(c);
+	}
+	void writedata8_cont(uint8_t c) {
+		setDataMode();
+		outputToSPI(c);
+	}
+
+	void writedata16_cont(uint16_t c)  {
+		setDataMode();
+		outputToSPI16(c);
+	}
+
+	void writecommand_last(uint8_t c)  {
+		setCommandMode();
+		outputToSPI(c);
+		waitTransmitComplete();
+	}
+	void writedata8_last(uint8_t c)  {
+		setDataMode();
+		outputToSPI(c);
+		waitTransmitComplete();
+	}
+	void writedata16_last(uint16_t c) {
+		setDataMode();
+		outputToSPI16(c);
+		waitTransmitComplete();
+	}
+
+#endif
+
+
 	void HLine(int16_t x, int16_t y, int16_t w, uint16_t color)
 	  __attribute__((always_inline)) {
 		#ifdef ENABLE_ILI9341_FRAMEBUFFER

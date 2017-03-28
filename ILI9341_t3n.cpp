@@ -70,8 +70,12 @@ ILI9341_t3n::ILI9341_t3n(uint8_t cs, uint8_t dc, uint8_t rst,
 	_miso = miso;
 	_width    = WIDTH;
 	_height   = HEIGHT;
-	_pspin	  = pspin;
+	_pspin	  = pspin; 
+#ifdef KINETISK	
 	_pkinetisk_spi = _pspin->kinetisk_spi();
+#else
+	_pkinetisl_spi = _pspin->kinetisl_spi();
+#endif	
 
 	rotation  = 0;
 	cursor_y  = cursor_x    = 0;
@@ -603,11 +607,13 @@ uint8_t ILI9341_t3n::readdata(void)
 
 uint8_t ILI9341_t3n::readcommand8(uint8_t c, uint8_t index)
 {
+    // Bail if not valid miso
+    if (_miso == 0xff) return 0;
+
+ #ifdef KINETISK
     uint16_t wTimeout = 0xffff;
     uint8_t r=0;
 
-    // Bail if not valid miso
-    if (_miso == 0xff) return 0;
 
     beginSPITransaction();
 	if (_pspin->sizeFIFO() >= 4) {
@@ -715,12 +721,25 @@ uint8_t ILI9341_t3n::readcommand8(uint8_t c, uint8_t index)
 	}  
     endSPITransaction();
     return r;  // get the received byte... should check for it first...
+#else
+	beginSPITransaction();
+	writecommand_cont(0xD9);
+	writedata8_cont(0x10 + index);
+
+	writecommand_cont(c);
+	writedata8_cont(0);
+	uint8_t r = waitTransmitCompleteReturnLast();
+	endSPITransaction();
+	return r;
+
+#endif   
 }
 
 // Read Pixel at x,y and get back 16-bit packed color
 #define READ_PIXEL_PUSH_BYTE 0x3f
 uint16_t ILI9341_t3n::readPixel(int16_t x, int16_t y)
 {
+#ifdef KINETISK	
 	//BUGBUG:: Should add some validation of X and Y
 	// Now if we are in buffer mode can return real fast
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
@@ -774,9 +793,16 @@ uint16_t ILI9341_t3n::readPixel(int16_t x, int16_t y)
 
 	endSPITransaction();
 	return color565(r,g,b);
+#else
+	// Kinetisk
+	uint16_t colors;
+	readRect(x, y, 1, 1, &colors);
+	return colors;
+#endif	
 }
 
 // Now lets see if we can read in multiple pixels
+#ifdef KINETISK
 void ILI9341_t3n::readRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t *pcolors)
 {
 	// Use our Origin. 
@@ -848,9 +874,80 @@ void ILI9341_t3n::readRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 	// wait for End of Queue
 	while ((_pkinetisk_spi->SR & SPI_SR_EOQF) == 0) ;
 	_pkinetisk_spi->SR = SPI_SR_EOQF;  // make sure it is clear
+	endSPITransaction();
 
+}
+#else
+
+// Teensy LC version
+void ILI9341_t3n::readRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t *pcolors)
+{
+	// Use our Origin. 
+	x+=_originx;
+	y+=_originy;
+	//BUGBUG:: Should add some validation of X and Y
+
+   if (_miso == 0xff) return;		// bail if not valid miso
+
+	uint8_t rgb[3];               // RGB bytes received from the display
+	uint8_t rgbIdx = 0;
+	uint32_t txCount = w * h * 3; // number of bytes we will transmit to the display
+	uint32_t rxCount = txCount;   // number of bytes we will receive back from the display
+
+	beginSPITransaction(ILI9341_SPICLOCK_READ);
+
+	setAddr(x, y, x+w-1, y+h-1);
+	writecommand_cont(ILI9341_RAMRD); // read from RAM
+
+	// transmit a DUMMY byte before the color bytes
+	writedata8_cont(0);
+
+	// Wait until that one returns, Could do a little better and double buffer but this is easer for now.
+	waitTransmitComplete();
+
+	// Since double buffer setup lets try keeping read/write in sync
+#define RRECT_TIMEOUT 0xffff	
+#undef 	READ_PIXEL_PUSH_BYTE
+#define READ_PIXEL_PUSH_BYTE 0 // try with zero to see... 	
+	uint16_t timeout_countdown = RRECT_TIMEOUT;
+	uint16_t dl_in;
+	// Write out first byte:
+
+	while (!(_pkinetisl_spi->S & SPI_S_SPTEF)) ; // Not worried that this can completely hang?
+	_pkinetisl_spi->DL = READ_PIXEL_PUSH_BYTE;
+
+	while (rxCount && timeout_countdown) {
+		// Now wait until we can output something
+		dl_in = 0xffff;
+		if (rxCount > 1) {
+			while (!(_pkinetisl_spi->S & SPI_S_SPTEF)) ; // Not worried that this can completely hang?
+			if (_pkinetisl_spi->S & SPI_S_SPRF)
+				dl_in = _pkinetisl_spi->DL;  
+			_pkinetisl_spi->DL = READ_PIXEL_PUSH_BYTE;
+		}
+
+		// Now wait until there is a byte available to receive
+		while ((dl_in != 0xffff) && !(_pkinetisl_spi->S & SPI_S_SPRF) && --timeout_countdown) ;
+		if (timeout_countdown) {   // Make sure we did not get here because of timeout 
+			rxCount--;
+			rgb[rgbIdx] = (dl_in != 0xffff)? dl_in : _pkinetisl_spi->DL;
+			rgbIdx++;
+			if (rgbIdx == 3) {
+				rgbIdx = 0;
+				*pcolors++ = color565(rgb[0], rgb[1], rgb[2]);
+			}
+			timeout_countdown = timeout_countdown;
+		}
+	}
+
+	// Debug code. 
+/*	if (timeout_countdown == 0) {
+		Serial.print("RRect Timeout ");
+		Serial.println(rxCount, DEC);
+	} */
 	endSPITransaction();
 }
+#endif		
 
 // Now lets see if we can writemultiple pixels
 void ILI9341_t3n::writeRect(int16_t x, int16_t y, int16_t w, int16_t h, const uint16_t *pcolors)
@@ -1160,7 +1257,11 @@ void ILI9341_t3n::begin(void)
 			#ifdef SPIN1_OBJECT_CREATED			
 			if (SPIN1.pinIsMOSI(_mosi) && SPIN1.pinIsMISO(_miso) && SPIN1.pinIsSCK(_sclk)) {
 				_pspin = &SPIN1;
+#ifdef KINETISK
 				_pkinetisk_spi = _pspin->kinetisk_spi();
+#else
+				_pkinetisl_spi = _pspin->kinetisl_spi();
+#endif				
 				Serial.println("ILI9341_t3n: SPIN1 automatically selected");
 			} else {
 				#ifdef SPIN2_OBJECT_CREATED			
@@ -1207,6 +1308,7 @@ void ILI9341_t3n::begin(void)
 	}
 
 	_pspin->begin();
+#ifdef KINETISK
 	if (_pspin->pinIsChipSelect(_cs, _dc)) {
 		pcs_data = _pspin->setCS(_cs);
 		pcs_command = pcs_data | _pspin->setCS(_dc);
@@ -1226,6 +1328,20 @@ void ILI9341_t3n::begin(void)
 			return;
 		}
 	}
+#else
+	// TLC
+	pcs_data = 0;
+	pcs_command = 0;
+	pinMode(_cs, OUTPUT);
+	_csport    = portOutputRegister(digitalPinToPort(_cs));
+	_cspinmask = digitalPinToBitMask(_cs);
+	*_csport |= _cspinmask;
+	pinMode(_dc, OUTPUT);
+	_dcport    = portOutputRegister(digitalPinToPort(_dc));
+	_dcpinmask = digitalPinToBitMask(_dc);
+	*_dcport |= _dcpinmask;
+	_dcpinAsserted = 0;
+#endif	
 
 	// toggle RST low to reset
 	if (_rst < 255) {
