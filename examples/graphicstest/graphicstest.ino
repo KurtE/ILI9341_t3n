@@ -113,14 +113,14 @@ ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, TFT_RESET, TFT_MOSI, TFT_SCK, TFT_
 #define TFT_RESET 8
 ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, TFT_RESET, TFT_MOSI, TFT_SCK, TFT_MISO, &SPIN2);
 #endif
-
+#define DEBUG_PIN 0
 
 void setup() {
   while (!Serial) ; // wait for Arduino Serial Monitor
   Serial.begin(9600);
   delay(500);
   Serial.println("ILI9341 Test!"); 
-
+  pinMode(DEBUG_PIN, OUTPUT);
   tft.begin();
 #ifdef  SPI0_DISP2
   Serial.println("Reset pin 10 to output");
@@ -134,17 +134,21 @@ void setup() {
   tft.println("Waiting for Arduino Serial Monitor...");
 
   // read diagnostics (optional but can help debug problems)
+  digitalWrite(DEBUG_PIN, !digitalRead(DEBUG_PIN));
   uint8_t x = tft.readcommand8(ILI9341_RDMODE);
   Serial.print("Display Power Mode: 0x"); Serial.println(x, HEX);
+  digitalWrite(DEBUG_PIN, !digitalRead(DEBUG_PIN));
   x = tft.readcommand8(ILI9341_RDMADCTL);
   Serial.print("MADCTL Mode: 0x"); Serial.println(x, HEX);
+  digitalWrite(DEBUG_PIN, !digitalRead(DEBUG_PIN));
   x = tft.readcommand8(ILI9341_RDPIXFMT);
   Serial.print("Pixel Format: 0x"); Serial.println(x, HEX);
+  digitalWrite(DEBUG_PIN, !digitalRead(DEBUG_PIN));
   x = tft.readcommand8(ILI9341_RDIMGFMT);
   Serial.print("Image Format: 0x"); Serial.println(x, HEX);
+  digitalWrite(DEBUG_PIN, !digitalRead(DEBUG_PIN));
   x = tft.readcommand8(ILI9341_RDSELFDIAG);
   Serial.print("Self Diagnostic: 0x"); Serial.println(x, HEX); 
-  
   Serial.println(F("Benchmark                Time (microseconds)"));
 
   Serial.print(F("Screen fill              "));
