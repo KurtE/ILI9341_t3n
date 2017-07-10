@@ -1,5 +1,5 @@
-#include <font_Arial.h>
-#include <font_ArialBoldX.h>
+#include <ili9341_t3n_font_Arial.h>
+#include <ili9341_t3n_font_ArialBold.h>
 #include <ILI9341_t3n.h>
 
 #include <SPIN.h>
