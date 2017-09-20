@@ -353,10 +353,12 @@ bool ILI9341_t3n::updateScreenAsync(bool update_cont)					// call to say update 
 
 void ILI9341_t3n::endUpdateAsync() {
 	// make sure it is on
+	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_dma_state & ILI9341_DMA_CONT) {
 		_dma_state &= ~ILI9341_DMA_CONT; // Turn of the continueous mode
 		_dmasettings[3].disableOnCompletion();
 	}
+	#endif
 }
 	
 void ILI9341_t3n::waitUpdateAsyncComplete(void) 
