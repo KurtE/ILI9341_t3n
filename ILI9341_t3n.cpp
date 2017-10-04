@@ -52,6 +52,12 @@
 #include <SPI.h>  
 
 //#define DEBUG_ASYNC_UPDATE  // Enable to print out dma info
+//#define DEBUG_ASYNC_LEDS	// Enable to use digitalWrites to Debug
+#ifdef DEBUG_ASYNC_LEDS
+#define DEBUG_PIN_1 0
+#define DEBUG_PIN_2 1
+#define DEBUG_PIN_3 4
+#endif
 
 #ifdef ENABLE_ILI9341_FRAMEBUFFER
 DMASetting 	ILI9341_t3n::_dmasettings[4];
@@ -65,6 +71,9 @@ volatile uint32_t	ILI9341_t3n::_dma_frame_count = 0;	// Can return a frame count
 void ILI9341_t3n::dmaInterrupt(void) {
 	//Serial.println("DMA Interrupt");
 	///  digitalWriteFast(1,!digitalReadFast(1));
+#ifdef DEBUG_ASYNC_LEDS
+	digitalWriteFast(DEBUG_PIN_2, HIGH);
+#endif
 	_dma_frame_count++;
 	_dmatx.clearInterrupt();
 
@@ -72,11 +81,15 @@ void ILI9341_t3n::dmaInterrupt(void) {
 	if ((_dma_state & ILI9341_DMA_CONT) == 0) {
 		// We are in single refresh mode or the user has called cancel so
 		// Lets try to release the CS pin
+		_dmaActiveDisplay->_pspin->waitFifoNotFull();
 		_dmaActiveDisplay->writecommand_last(ILI9341_NOP);
 		_dmaActiveDisplay->endSPITransaction();
 		_dma_state &= ~ILI9341_DMA_ACTIVE;
 		_dmaActiveDisplay = 0;	// We don't have a display active any more... 
 	}
+#ifdef DEBUG_ASYNC_LEDS
+	digitalWriteFast(DEBUG_PIN_2, LOW);
+#endif
 }
 
 #endif
@@ -292,11 +305,17 @@ bool ILI9341_t3n::updateScreenAsync(bool update_cont)					// call to say update 
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (!_use_fbtft) return false;
 
+#ifdef DEBUG_ASYNC_LEDS
+	digitalWriteFast(DEBUG_PIN_1, HIGH);
+#endif
 	// Init DMA settings. 
 	initDMASettings();
 
 	// Don't start one if already active.
 	if (_dma_state & ILI9341_DMA_ACTIVE) {
+	#ifdef DEBUG_ASYNC_LEDS
+		digitalWriteFast(DEBUG_PIN_1, LOW);
+	#endif
 		return false;
 	}
 
@@ -316,16 +335,6 @@ bool ILI9341_t3n::updateScreenAsync(bool update_cont)					// call to say update 
 	}
 
 
-	beginSPITransaction();
-
-	// Doing full window. 
-	setAddr(0, 0, _width-1, _height-1);
-	writecommand_cont(ILI9341_RAMWR);
-
-	// Write the first Word out before enter DMA as to setup the proper CS/DC/Continue flaugs
-	writedata16_cont(*_pfbtft);
-
-	// now lets start up the DMA
 #ifdef DEBUG_ASYNC_UPDATE
 	Serial.printf("DMA dump TCDs %d\n", _dmatx.channel);
 	dumpDMA_TCD(&_dmatx);
@@ -334,16 +343,28 @@ bool ILI9341_t3n::updateScreenAsync(bool update_cont)					// call to say update 
 	dumpDMA_TCD(&_dmasettings[2]);
 	dumpDMA_TCD(&_dmasettings[3]);
 #endif
+	beginSPITransaction();
+
+	// Doing full window. 
+	setAddr(0, 0, _width-1, _height-1);
+	writecommand_cont(ILI9341_RAMWR);
+
+	// Write the first Word out before enter DMA as to setup the proper CS/DC/Continue flaugs
+	writedata16_cont(*_pfbtft);
+	// now lets start up the DMA
 //	volatile uint16_t  biter = _dmatx.TCD->BITER;
 	//DMA_CDNE_CDNE(_dmatx.channel);
 //	_dmatx = _dmasettings[0];
 //	_dmatx.TCD->BITER = biter;
 	_dma_frame_count = 0;  // Set frame count back to zero. 
+	_dmaActiveDisplay = this;
+	_dma_state |= ILI9341_DMA_ACTIVE;
 	_pkinetisk_spi->RSER |= SPI_RSER_TFFF_DIRS |	 SPI_RSER_TFFF_RE;	 // Set DMA Interrupt Request Select and Enable register
 	_pkinetisk_spi->MCR &= ~SPI_MCR_HALT;  //Start transfers.
 	_dmatx.enable();
-	_dmaActiveDisplay = this;
-	_dma_state |= ILI9341_DMA_ACTIVE;
+#ifdef DEBUG_ASYNC_LEDS
+	digitalWriteFast(DEBUG_PIN_1, LOW);
+#endif
 	return true;
     #else
     return false;     // no frame buffer so will never start... 
@@ -364,9 +385,16 @@ void ILI9341_t3n::endUpdateAsync() {
 void ILI9341_t3n::waitUpdateAsyncComplete(void) 
 {
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
+#ifdef DEBUG_ASYNC_LEDS
+	digitalWriteFast(DEBUG_PIN_3, HIGH);
+#endif
+
 	while ((_dma_state & ILI9341_DMA_ACTIVE)) {
-		asm volatile("wfi");
+		// asm volatile("wfi");
 	};
+#ifdef DEBUG_ASYNC_LEDS
+	digitalWriteFast(DEBUG_PIN_3, LOW);
+#endif
 	#endif	
 }
 
@@ -1576,6 +1604,12 @@ void ILI9341_t3n::begin(void)
 	beginSPITransaction();
 	writecommand_last(ILI9341_DISPON);    // Display on
 	endSPITransaction();
+
+#ifdef DEBUG_ASYNC_LEDS
+	pinMode(DEBUG_PIN_1, OUTPUT);
+	pinMode(DEBUG_PIN_2, OUTPUT);
+	pinMode(DEBUG_PIN_3, OUTPUT);
+#endif
 }
 
 
