@@ -194,7 +194,7 @@ typedef struct {
 #define ILI9341_SPICLOCK_READ 2000000
 #else
 #define ILI9341_SPICLOCK 30000000
-#define ILI9341_SPICLOCK_READ 20000000
+#define ILI9341_SPICLOCK_READ 2000000
 #endif
 class ILI9341_t3n : public Print
 {
