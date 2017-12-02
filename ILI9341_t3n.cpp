@@ -72,9 +72,9 @@ ILI9341_t3n::ILI9341_t3n(uint8_t cs, uint8_t dc, uint8_t rst,
 	_height   = HEIGHT;
 	_pspin	  = pspin; 
 #ifdef KINETISK	
-	_pkinetisk_spi = _pspin->kinetisk_spi();
+	_pkinetisk_spi = &_pspin->port();
 #else
-	_pkinetisl_spi = _pspin->kinetisl_spi();
+	_pkinetisl_spi = &_pspin->port();
 #endif	
 
 	rotation  = 0;
@@ -1258,16 +1258,16 @@ void ILI9341_t3n::begin(void)
 			if (SPIN1.pinIsMOSI(_mosi) && SPIN1.pinIsMISO(_miso) && SPIN1.pinIsSCK(_sclk)) {
 				_pspin = &SPIN1;
 #ifdef KINETISK
-				_pkinetisk_spi = _pspin->kinetisk_spi();
+				_pkinetisk_spi = &_pspin->port();
 #else
-				_pkinetisl_spi = _pspin->kinetisl_spi();
+				_pkinetisl_spi = &_pspin->port();
 #endif				
 				Serial.println("ILI9341_t3n: SPIN1 automatically selected");
 			} else {
 				#ifdef SPIN2_OBJECT_CREATED			
 				if (SPIN2.pinIsMOSI(_mosi) && SPIN2.pinIsMISO(_miso) && SPIN2.pinIsSCK(_sclk)) {
 					_pspin = &SPIN2;
-					_pkinetisk_spi = _pspin->kinetisk_spi();
+					_pkinetisk_spi = &_pspin->port();
 					Serial.println("ILI9341_t3n: SPIN2 automatically selected");
 				} else {
 				#endif
