@@ -47,14 +47,23 @@
 //		strPixelLen			- gets pixel length of given ASCII string
 
 // <\SoftEgg>
+// Also some of this comes from the DMA version of the library...
+
+/* ILI9341_t3DMA library code is placed under the MIT license
+ * Copyright (c) 2016 Frank Bösing
+ *
+*/
 
 #ifndef _ILI9341_t3NH_
 #define _ILI9341_t3NH_
+#define  ILI9341_USE_DMAMEM
 
 // Allow us to enable or disable capabilities, particully Frame Buffer and Clipping for speed and size
 #ifndef DISABLE_ILI9341_FRAMEBUFFER
 #if defined(__MK64FX512__) || defined(__MK66FX1M0__)
 #define ENABLE_ILI9341_FRAMEBUFFER
+//#define SCREEN_DMA_NUM_SETTINGS (((uint32_t)((2 * ILI9341_TFTHEIGHT * ILI9341_TFTWIDTH) / 65536UL))+1)
+#define SCREEN_DMA_NUM_SETTINGS 3 // see if making it a constant value makes difference...
 #endif
 #endif
 
@@ -64,6 +73,8 @@
 #include "Arduino.h"
 #include <SPI.h>
 #include <SPIN.h>
+#include <DMAChannel.h>
+
 #endif
 
 #define ILI9341_TFTWIDTH  240
@@ -172,6 +183,9 @@ typedef struct {
 	unsigned char cap_height;
 } ILI9341_t3_font_t;
 
+#define ILI9341_DMA_INIT	0x01 	// We have init the Dma settings
+#define ILI9341_DMA_CONT	0x02 	// continuous mode
+#define ILI9341_DMA_ACTIVE  0x80    // Is currently active
 
 #ifdef __cplusplus
 // At all other speeds, ILI9241_KINETISK__pspi->beginTransaction() will use the fastest available clock
@@ -180,7 +194,7 @@ typedef struct {
 #define ILI9341_SPICLOCK_READ 2000000
 #else
 #define ILI9341_SPICLOCK 30000000
-#define ILI9341_SPICLOCK_READ 20000000
+#define ILI9341_SPICLOCK_READ 2000000
 #endif
 class ILI9341_t3n : public Print
 {
@@ -329,11 +343,21 @@ class ILI9341_t3n : public Print
 	int16_t strPixelLen(char * str);
 
 	// added support to use optional Frame buffer
+	void	setFrameBuffer(uint16_t *frame_buffer);
 	uint8_t useFrameBuffer(boolean b);		// use the frame buffer?  First call will allocate
 	void	freeFrameBuffer(void);			// explicit call to release the buffer
-	void	updateScreen(void);			// call to say update the screen now. 
+	void	updateScreen(void);				// call to say update the screen now. 
+	bool	updateScreenAsync(bool update_cont = false);	// call to say update the screen optinoally turn into continuous mode. 
+	void	waitUpdateAsyncComplete(void);
+	void	endUpdateAsync();			 // Turn of the continueous mode fla
 
-
+	uint32_t frameCount() {return _dma_frame_count; }
+	#ifdef ENABLE_ILI9341_FRAMEBUFFER
+	boolean	asyncUpdateActive(void)  {return (_dma_state & ILI9341_DMA_ACTIVE);}
+	void	initDMASettings(void);
+	#else
+	boolean	asyncUpdateActive(void)  {return false;}
+	#endif
  protected:
  	SPINClass *_pspin;
 #ifdef KINETISK
@@ -387,6 +411,14 @@ class ILI9341_t3n : public Print
     // Add support for optional frame buffer
     uint16_t	*_pfbtft;						// Optional Frame buffer 
     uint8_t		_use_fbtft;						// Are we in frame buffer mode?
+    uint8_t		_we_allocated_buffer;			// We allocated the buffer; 
+    // Add DMA support. 
+	static  ILI9341_t3n 		*_dmaActiveDisplay;  // Use pointer to this as a way to get back to object...
+	static volatile uint8_t  	_dma_state;  		// DMA status
+	static volatile uint32_t	_dma_frame_count;	// Can return a frame count...
+	static DMASetting 	_dmasettings[4];
+	static DMAChannel  	_dmatx;
+	static void dmaInterrupt(void);
     #endif
 
 	void setAddr(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1)
