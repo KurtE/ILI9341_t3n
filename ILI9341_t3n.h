@@ -350,7 +350,7 @@ class ILI9341_t3n : public Print
 	bool	updateScreenAsync(bool update_cont = false);	// call to say update the screen optinoally turn into continuous mode. 
 	void	waitUpdateAsyncComplete(void);
 	void	endUpdateAsync();			 // Turn of the continueous mode fla
-
+	void	dumpDMASettings();
 	uint32_t frameCount() {return _dma_frame_count; }
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	boolean	asyncUpdateActive(void)  {return (_dma_state & ILI9341_DMA_ACTIVE);}
@@ -407,7 +407,7 @@ class ILI9341_t3n : public Print
     volatile uint8_t  *_dcport;
     uint8_t _dcpinmask;
 #endif
-	#ifdef ENABLE_ILI9341_FRAMEBUFFER
+#ifdef ENABLE_ILI9341_FRAMEBUFFER
     // Add support for optional frame buffer
     uint16_t	*_pfbtft;						// Optional Frame buffer 
     uint8_t		_use_fbtft;						// Are we in frame buffer mode?
@@ -416,10 +416,21 @@ class ILI9341_t3n : public Print
 	static  ILI9341_t3n 		*_dmaActiveDisplay;  // Use pointer to this as a way to get back to object...
 	static volatile uint8_t  	_dma_state;  		// DMA status
 	static volatile uint32_t	_dma_frame_count;	// Can return a frame count...
+	#if defined(__MK66FX1M0__) 
+	// T3.6 use Scatter/gather with chain to do transfer
 	static DMASetting 	_dmasettings[4];
 	static DMAChannel  	_dmatx;
+	#else
+	// T3.5 - had issues scatter/gather so do just use channels/interrupts
+	// and update and continue
+	static DMAChannel  	_dmatx;
+	static DMAChannel  	_dmarx;
+	static uint16_t 	_dma_count_remaining;
+	static uint16_t		_dma_write_size_words;
+	#endif	
 	static void dmaInterrupt(void);
-    #endif
+	void process_dma_interrupt(void);
+#endif
 
 	void setAddr(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1)
 	  __attribute__((always_inline)) {
