@@ -21,7 +21,7 @@ have one CS pin unless you use some form of adapter to use the SPI pins that are
 
 Frame Buffer
 ------------
-On the T3.6 which have a lot more memory than previous Teensy processors, I also borrowed from the DMA version of the library and added code to be able to use a logical Frame Buffer.  To enable this I added a couple of API's 
+The teensy 3.6 and now 3.5 have a lot more memory than previous Teensy processors, so on these boards, I borrowed some ideas from the ILI9341_t3DMA library and added code to be able to use a logical Frame Buffer.  To enable this I added a couple of API's 
 
     uint8_t useFrameBuffer(boolean b) - if b non-zero it will allocate memory and start using
     void	freeFrameBuffer(void) - Will free up the memory that was used.
