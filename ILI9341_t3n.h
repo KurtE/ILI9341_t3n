@@ -351,19 +351,22 @@ class ILI9341_t3n : public Print
 	void	waitUpdateAsyncComplete(void);
 	void	endUpdateAsync();			 // Turn of the continueous mode fla
 	void	dumpDMASettings();
-	uint32_t frameCount() {return _dma_frame_count; }
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
+	uint32_t frameCount() {return _dma_frame_count; }
 	boolean	asyncUpdateActive(void)  {return (_dma_state & ILI9341_DMA_ACTIVE);}
 	void	initDMASettings(void);
 	#else
+	uint32_t frameCount() {return 0; }
 	boolean	asyncUpdateActive(void)  {return false;}
 	#endif
  protected:
  	SPINClass *_pspin;
-#ifdef KINETISK
+#if defined(KINETISK)
  	KINETISK_SPI_t *_pkinetisk_spi;
-#endif
-#ifdef KINETISL
+#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
+ 	IMXRT_LPSPI_t *_pimxrt_spi;
+
+#elif defined(KINETISL)
  	KINETISL_SPI_t *_pkinetisl_spi;
 #endif
 
@@ -401,8 +404,14 @@ class ILI9341_t3n : public Print
 	uint8_t pcs_data, pcs_command;
 	uint8_t _miso, _mosi, _sclk;
 	// add support to allow only one hardware CS (used for dc)
+#if defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
+    uint32_t _cspinmask;
+    volatile uint32_t *_csport;
+    uint32_t _spi_tcr_current;
+#else
     uint8_t _cspinmask;
     volatile uint8_t *_csport;
+#endif
 #ifdef KINETISL
     volatile uint8_t  *_dcport;
     uint8_t _dcpinmask;
@@ -441,17 +450,38 @@ class ILI9341_t3n : public Print
 		writedata16_cont(y0);   // YSTART
 		writedata16_cont(y1);   // YEND
 	}
+//. From Onewire utility files
+#if defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
+
+	void DIRECT_WRITE_LOW(volatile uint32_t * base, uint32_t mask)  __attribute__((always_inline)) {
+		*(base+34) = mask;
+	}
+	void DIRECT_WRITE_HIGH(volatile uint32_t * base, uint32_t mask)  __attribute__((always_inline)) {
+		*(base+33) = mask;
+	}
+#endif
+
 	void beginSPITransaction(uint32_t clock = ILI9341_SPICLOCK) __attribute__((always_inline)) {
 		_pspin->beginTransaction(SPISettings(clock, MSBFIRST, SPI_MODE0));
-		if (_csport)
+		if (_csport) {
+#if defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x 
+			DIRECT_WRITE_LOW(_csport, _cspinmask);
+#else
 			*_csport  &= ~_cspinmask;
+#endif
+		}
 	}
 	void endSPITransaction() __attribute__((always_inline)) {
-		if (_csport)
+		if (_csport) {
+#if defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x 
+			DIRECT_WRITE_HIGH(_csport, _cspinmask);
+#else
 			*_csport |= _cspinmask;
+#endif
+		}
 		_pspin->endTransaction();
 	}
-#ifdef KINETISK	
+#if defined(KINETISK)	
 	void writecommand_cont(uint8_t c) __attribute__((always_inline)) {
 		_pkinetisk_spi->PUSHR = c | (pcs_command << 16) | SPI_PUSHR_CTAS(0) | SPI_PUSHR_CONT;
 		_pspin->waitFifoNotFull();
@@ -479,9 +509,70 @@ class ILI9341_t3n : public Print
 		_pkinetisk_spi->PUSHR = d | (pcs_data << 16) | SPI_PUSHR_CTAS(1) | SPI_PUSHR_EOQ;
 		_pspin->waitTransmitComplete(mcr);
 	}
-#endif
+#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x 
+	#define TCR_MASK  (LPSPI_TCR_PCS(3) | LPSPI_TCR_FRAMESZ(31) | LPSPI_TCR_CONT)
+	void maybeUpdateTCR(uint32_t requested_tcr_state) /*__attribute__((always_inline)) */ {
+		static uint8_t debug_output_count = 0;
+		// BUGBUG - seeing what bits changing work...
+		//requested_tcr_state &= LPSPI_TCR_FRAMESZ(31);	// try only updating frame size and see if that helps...
+		if ((_spi_tcr_current & TCR_MASK) != requested_tcr_state) {
+			_spi_tcr_current = (_spi_tcr_current & ~TCR_MASK) | requested_tcr_state ;
+			// only output when Transfer queue is empty.
+			while ((_pimxrt_spi->FSR & 0x1f) )	;
+			_pimxrt_spi->TCR = _spi_tcr_current;	// update the 
+			if (debug_output_count < 10) {
+				debug_output_count++;
+				Serial.printf("MBUTCR %x %x\n", requested_tcr_state, _spi_tcr_current);
+			}
+		}
+	}
+
+	// BUGBUG:: currently assumming we only have CS_0 as valid CS
+	void writecommand_cont(uint8_t c) __attribute__((always_inline)) {
+		maybeUpdateTCR(LPSPI_TCR_PCS(0) | LPSPI_TCR_FRAMESZ(7) | LPSPI_TCR_CONT);
+		_pimxrt_spi->TDR = c;
+		_pspin->waitFifoNotFull();
+	}
+	void writedata8_cont(uint8_t c) __attribute__((always_inline)) {
+		maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(7) | LPSPI_TCR_CONT);
+		_pimxrt_spi->TDR = c;
+		_pspin->waitFifoNotFull();
+	}
+	void writedata16_cont(uint16_t d) __attribute__((always_inline)) {
+		maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(15) | LPSPI_TCR_CONT);
+		_pimxrt_spi->TDR = d;
+		_pspin->waitFifoNotFull();
+	}
+	void writecommand_last(uint8_t c) __attribute__((always_inline)) {
+		maybeUpdateTCR(LPSPI_TCR_PCS(0) | LPSPI_TCR_FRAMESZ(7));
+		_pimxrt_spi->TDR = c;
+		_pspin->waitTransmitComplete();
+	}
+	void writedata8_last(uint8_t c) __attribute__((always_inline)) {
+		maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(7));
+		_pimxrt_spi->TDR = c;
+		_pspin->waitTransmitComplete();
+	}
+	void writedata16_last(uint16_t d) __attribute__((always_inline)) {
+		maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(15));
+		_pimxrt_spi->TDR = d;
+		_pspin->waitTransmitComplete();
+	}
+	uint16_t waitTransmitCompleteReturnLast()  {
+	    uint16_t val ;
+    	do {
+        	if ((_pimxrt_spi->RSR & LPSPI_RSR_RXEMPTY) == 0)  {
+            	val = _pimxrt_spi->RDR;  // Read any pending RX bytes in
+	        }
+		} while ((_pimxrt_spi->SR & LPSPI_SR_TCF) == 0) ;
+    	while ((_pimxrt_spi->RSR & LPSPI_RSR_RXEMPTY) == 0)  {
+        	val = _pimxrt_spi->RDR;  // Read any pending RX bytes in
+        }
+		return val;
+	}
+
+#elif defined (KINETISL)
 // Lets see how hard to make it work OK with T-LC
-#ifdef KINETISL
 	uint8_t _dcpinAsserted;
 	uint8_t _data_sent_not_completed;
 	void waitTransmitComplete()  {

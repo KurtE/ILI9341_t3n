@@ -187,6 +187,8 @@ ILI9341_t3n::ILI9341_t3n(uint8_t cs, uint8_t dc, uint8_t rst,
 	_pspin	  = pspin; 
 #ifdef KINETISK	
 	_pkinetisk_spi = &_pspin->port();
+#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
+ 	_pimxrt_spi = &_pspin->port();
 #else
 	_pkinetisl_spi = &_pspin->port();
 #endif	
@@ -318,6 +320,7 @@ void dumpDMA_TCD(DMABaseClass *dmabc)
 #endif
 
 //==============================================
+#ifdef ENABLE_ILI9341_FRAMEBUFFER
 void	ILI9341_t3n::initDMASettings(void) 
 {
 	Serial.printf("initDMASettings called %d\n", _dma_state);
@@ -588,7 +591,7 @@ void ILI9341_t3n::waitUpdateAsyncComplete(void)
 #endif
 	#endif	
 }
-
+#endif
 //=======================================================================
 
 
@@ -1288,6 +1291,77 @@ void ILI9341_t3n::readRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 	endSPITransaction();
 
 }
+#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x 
+void ILI9341_t3n::readRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t *pcolors)
+{
+#ifdef LATER
+	// Use our Origin. 
+	x+=_originx;
+	y+=_originy;
+	//BUGBUG:: Should add some validation of X and Y
+
+   if (_miso == 0xff) return;		// bail if not valid miso
+
+	uint8_t rgb[3];               // RGB bytes received from the display
+	uint8_t rgbIdx = 0;
+	uint32_t txCount = w * h * 3; // number of bytes we will transmit to the display
+	uint32_t rxCount = txCount;   // number of bytes we will receive back from the display
+
+	beginSPITransaction(ILI9341_SPICLOCK_READ);
+
+	setAddr(x, y, x+w-1, y+h-1);
+	writecommand_cont(ILI9341_RAMRD); // read from RAM
+
+	// transmit a DUMMY byte before the color bytes
+	writedata8_cont(0);
+
+	// Wait until that one returns, Could do a little better and double buffer but this is easer for now.
+	waitTransmitComplete();
+
+	// Since double buffer setup lets try keeping read/write in sync
+#define RRECT_TIMEOUT 0xffff	
+#undef 	READ_PIXEL_PUSH_BYTE
+#define READ_PIXEL_PUSH_BYTE 0 // try with zero to see... 	
+	uint16_t timeout_countdown = RRECT_TIMEOUT;
+	uint16_t dl_in;
+	// Write out first byte:
+
+	while (!(_pkinetisl_spi->S & SPI_S_SPTEF)) ; // Not worried that this can completely hang?
+	_pkinetisl_spi->DL = READ_PIXEL_PUSH_BYTE;
+
+	while (rxCount && timeout_countdown) {
+		// Now wait until we can output something
+		dl_in = 0xffff;
+		if (rxCount > 1) {
+			while (!(_pkinetisl_spi->S & SPI_S_SPTEF)) ; // Not worried that this can completely hang?
+			if (_pkinetisl_spi->S & SPI_S_SPRF)
+				dl_in = _pkinetisl_spi->DL;  
+			_pkinetisl_spi->DL = READ_PIXEL_PUSH_BYTE;
+		}
+
+		// Now wait until there is a byte available to receive
+		while ((dl_in != 0xffff) && !(_pkinetisl_spi->S & SPI_S_SPRF) && --timeout_countdown) ;
+		if (timeout_countdown) {   // Make sure we did not get here because of timeout 
+			rxCount--;
+			rgb[rgbIdx] = (dl_in != 0xffff)? dl_in : _pkinetisl_spi->DL;
+			rgbIdx++;
+			if (rgbIdx == 3) {
+				rgbIdx = 0;
+				*pcolors++ = color565(rgb[0], rgb[1], rgb[2]);
+			}
+			timeout_countdown = timeout_countdown;
+		}
+	}
+
+	// Debug code. 
+/*	if (timeout_countdown == 0) {
+		Serial.print("RRect Timeout ");
+		Serial.println(rxCount, DEC);
+	} */
+	endSPITransaction();
+#endif
+}
+
 #else
 
 // Teensy LC version
@@ -1673,6 +1747,8 @@ void ILI9341_t3n::begin(void)
 				_pspin = &SPIN1;
 #ifdef KINETISK
 				_pkinetisk_spi = &_pspin->port();
+#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x 
+				_pimxrt_spi = &_pspin->port();
 #else
 				_pkinetisl_spi = &_pspin->port();
 #endif				
@@ -1742,6 +1818,21 @@ void ILI9341_t3n::begin(void)
 			return;
 		}
 	}
+#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x 
+	_csport = portOutputRegister(_cs);
+	_cspinmask = digitalPinToBitMask(_cs);
+	pinMode(_cs, OUTPUT);	
+	DIRECT_WRITE_HIGH(_csport, _cspinmask);
+	_spi_tcr_current = _pimxrt_spi->TCR; // get the current TCR value 
+
+	// TODO:  Need to setup DC to actually work.
+	if (_dc == 10 ) {
+		maybeUpdateTCR(LPSPI_TCR_PCS(3) || LPSPI_TCR_FRAMESZ(7));
+		*(portConfigRegister(_dc)) = 3 | 0x10;	// Set to DC Mode
+	} else {
+		Serial.println("ILI9341_t3n: Error not DC is not valid hardware CS pin");
+	}
+
 #else
 	// TLC
 	pcs_data = 0;
