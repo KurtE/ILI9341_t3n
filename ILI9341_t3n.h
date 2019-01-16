@@ -512,18 +512,11 @@ class ILI9341_t3n : public Print
 #elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x 
 	#define TCR_MASK  (LPSPI_TCR_PCS(3) | LPSPI_TCR_FRAMESZ(31) | LPSPI_TCR_CONT)
 	void maybeUpdateTCR(uint32_t requested_tcr_state) /*__attribute__((always_inline)) */ {
-		static uint8_t debug_output_count = 0;
-		// BUGBUG - seeing what bits changing work...
-		//requested_tcr_state &= LPSPI_TCR_FRAMESZ(31);	// try only updating frame size and see if that helps...
 		if ((_spi_tcr_current & TCR_MASK) != requested_tcr_state) {
 			_spi_tcr_current = (_spi_tcr_current & ~TCR_MASK) | requested_tcr_state ;
 			// only output when Transfer queue is empty.
 			while ((_pimxrt_spi->FSR & 0x1f) )	;
 			_pimxrt_spi->TCR = _spi_tcr_current;	// update the 
-			if (debug_output_count < 10) {
-				debug_output_count++;
-				Serial.printf("MBUTCR %x %x\n", requested_tcr_state, _spi_tcr_current);
-			}
 		}
 	}
 
@@ -546,16 +539,19 @@ class ILI9341_t3n : public Print
 	void writecommand_last(uint8_t c) __attribute__((always_inline)) {
 		maybeUpdateTCR(LPSPI_TCR_PCS(0) | LPSPI_TCR_FRAMESZ(7));
 		_pimxrt_spi->TDR = c;
+		_pimxrt_spi->SR = LPSPI_SR_WCF | LPSPI_SR_FCF | LPSPI_SR_TCF;
 		_pspin->waitTransmitComplete();
 	}
 	void writedata8_last(uint8_t c) __attribute__((always_inline)) {
 		maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(7));
 		_pimxrt_spi->TDR = c;
+		_pimxrt_spi->SR = LPSPI_SR_WCF | LPSPI_SR_FCF | LPSPI_SR_TCF;
 		_pspin->waitTransmitComplete();
 	}
 	void writedata16_last(uint16_t d) __attribute__((always_inline)) {
 		maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(15));
 		_pimxrt_spi->TDR = d;
+		_pimxrt_spi->SR = LPSPI_SR_WCF | LPSPI_SR_FCF | LPSPI_SR_TCF;
 		_pspin->waitTransmitComplete();
 	}
 	uint16_t waitTransmitCompleteReturnLast()  {

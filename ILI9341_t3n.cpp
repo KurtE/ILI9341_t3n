@@ -1826,9 +1826,9 @@ void ILI9341_t3n::begin(void)
 	_spi_tcr_current = _pimxrt_spi->TCR; // get the current TCR value 
 
 	// TODO:  Need to setup DC to actually work.
-	if (_dc == 10 ) {
+	if (_pspin->pinIsChipSelect(_dc)) {
+	 	_pspin->setCS(_dc);
 		maybeUpdateTCR(LPSPI_TCR_PCS(3) || LPSPI_TCR_FRAMESZ(7));
-		*(portConfigRegister(_dc)) = 3 | 0x10;	// Set to DC Mode
 	} else {
 		Serial.println("ILI9341_t3n: Error not DC is not valid hardware CS pin");
 	}
