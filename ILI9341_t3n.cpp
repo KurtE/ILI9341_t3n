@@ -111,6 +111,8 @@ void ILI9341_t3n::process_dma_interrupt(void) {
 		_dmaActiveDisplay = 0;	// We don't have a display active any more... 
 
 	}
+#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
+	// TODO:
 #else
 	// T3.5...
 	_dmarx.clearInterrupt();
@@ -368,6 +370,8 @@ void	ILI9341_t3n::initDMASettings(void)
 	_dmatx.triggerAtHardwareEvent(dmaTXevent);
 	_dmatx = _dmasettings[0];
 	_dmatx.attachInterrupt(dmaInterrupt);
+#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
+	// TODO: 
 #else
 	// T3.5
 	// Lets setup the write size.  For SPI we can use up to 32767 so same size as we use on T3.6...
@@ -498,6 +502,8 @@ bool ILI9341_t3n::updateScreenAsync(bool update_cont)					// call to say update 
 	_pkinetisk_spi->RSER |= SPI_RSER_TFFF_DIRS |	 SPI_RSER_TFFF_RE;	 // Set DMA Interrupt Request Select and Enable register
 	_pkinetisk_spi->MCR &= ~SPI_MCR_HALT;  //Start transfers.
 	_dmatx.enable();
+#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
+	// TODO
 #else
 	//==========================================
 	// T3.5
