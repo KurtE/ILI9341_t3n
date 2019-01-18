@@ -571,7 +571,7 @@ class ILI9341_t3n : public Print
 		_pspin->waitTransmitComplete();
 	}
 	uint16_t waitTransmitCompleteReturnLast()  {
-	    uint16_t val ;
+	    uint16_t val=0;
     	do {
         	if ((_pimxrt_spi->RSR & LPSPI_RSR_RXEMPTY) == 0)  {
             	val = _pimxrt_spi->RDR;  // Read any pending RX bytes in
