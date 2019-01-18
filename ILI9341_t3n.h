@@ -60,10 +60,14 @@
 
 // Allow us to enable or disable capabilities, particully Frame Buffer and Clipping for speed and size
 #ifndef DISABLE_ILI9341_FRAMEBUFFER
-#if defined(__MK64FX512__) || defined(__MK66FX1M0__) || defined(__IMXRT1052__) || defined(__IMXRT1062__)
+#if defined(__MK64FX512__) || defined(__MK66FX1M0__)
 #define ENABLE_ILI9341_FRAMEBUFFER
 //#define SCREEN_DMA_NUM_SETTINGS (((uint32_t)((2 * ILI9341_TFTHEIGHT * ILI9341_TFTWIDTH) / 65536UL))+1)
 #define SCREEN_DMA_NUM_SETTINGS 3 // see if making it a constant value makes difference...
+#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)
+#define ENABLE_ILI9341_FRAMEBUFFER
+//#define SCREEN_DMA_NUM_SETTINGS (((uint32_t)((2 * ILI9341_TFTHEIGHT * ILI9341_TFTWIDTH) / 65536UL))+1)
+#define SCREEN_DMA_NUM_SETTINGS 4 // see if making it a constant value makes difference...
 #endif
 #endif
 
@@ -344,6 +348,7 @@ class ILI9341_t3n : public Print
 
 	// added support to use optional Frame buffer
 	void	setFrameBuffer(uint16_t *frame_buffer);
+	uint16_t *getFrameBuffer() {return _pfbtft;}
 	uint8_t useFrameBuffer(boolean b);		// use the frame buffer?  First call will allocate
 	void	freeFrameBuffer(void);			// explicit call to release the buffer
 	void	updateScreen(void);				// call to say update the screen now. 
@@ -420,7 +425,7 @@ class ILI9341_t3n : public Print
     // Add support for optional frame buffer
     uint16_t	*_pfbtft;						// Optional Frame buffer 
     uint8_t		_use_fbtft;						// Are we in frame buffer mode?
-    uint8_t		_we_allocated_buffer;			// We allocated the buffer; 
+    uint16_t	*_we_allocated_buffer;			// We allocated the buffer; 
     // Add DMA support. 
 	static  ILI9341_t3n 		*_dmaActiveDisplay;  // Use pointer to this as a way to get back to object...
 	static volatile uint8_t  	_dma_state;  		// DMA status
@@ -429,6 +434,11 @@ class ILI9341_t3n : public Print
 	// T3.6 use Scatter/gather with chain to do transfer
 	static DMASetting 	_dmasettings[4];
 	static DMAChannel  	_dmatx;
+	#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
+	// Going to try it similar to T4.
+	static DMASetting 	_dmasettings[4];
+	static DMAChannel  	_dmatx;
+	uint32_t 			_spi_fcr_save;		// save away previous FCR register value
 	#else
 	// T3.5 - had issues scatter/gather so do just use channels/interrupts
 	// and update and continue
