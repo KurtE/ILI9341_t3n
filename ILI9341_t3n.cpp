@@ -121,23 +121,39 @@ void ILI9341_t3n::process_dma_interrupt(void) {
 	_dmatx.clearInterrupt();
 
 	if ((_dma_state & ILI9341_DMA_CONT) == 0) {
-#ifdef DEBUG_ASYNC_LEDS
-		digitalWriteFast(DEBUG_PIN_3, HIGH);
-#endif
 		_dmatx.clearComplete();
 		// We are in single refresh mode or the user has called cancel so
 		// Lets try to release the CS pin
 		// Lets wait until FIFO is not empty
-		_pimxrt_spi->CR = LPSPI_CR_RRF | LPSPI_CR_MEN;	// clear out FIFO
-		_pimxrt_spi->SR = 0x3f00;	// clear out all of the other status...
 		Serial4.printf("Before FSR wait: %x\n", _pimxrt_spi->FSR);
-		while (_pimxrt_spi->FSR)  ;	// wait until this one is complete
+ 		_pimxrt_spi->DER = 0;		// DMA no longer doing TX (or RX)
+		_pimxrt_spi->CFGR1 &= ~LPSPI_CFGR1_NOSTALL;
+		while (_pimxrt_spi->FSR & 0x1f)  ;	// wait until this one is complete
+
+#if 0
+
+		//_pimxrt_spi->CR = LPSPI_CR_RRF | LPSPI_CR_MEN;	// clear out FIFO
+		//_pimxrt_spi->SR = 0x3f00;	// clear out all of the other status...
 		uint32_t sr = _pimxrt_spi->SR;
 		Serial4.printf("Before SR wait: %x\n", sr);
 		while (_pimxrt_spi->SR == sr) ; // Wait until something changes 
-		_pimxrt_spi->FCR = _spi_fcr_save;	// restore the FSR status... 
-		Serial4.printf("Output NOP (SR %d)\n", _pimxrt_spi->SR);
+#endif
+		_pimxrt_spi->CR = LPSPI_CR_RRF | LPSPI_CR_MEN;	// clear out FIFO
+
+ 		_pimxrt_spi->DER = 0;		// DMA no longer doing TX (or RX)
+		// Now lets try output NOP and see if that works...
+		// Before restoring FCR
+		Serial4.printf("Output NOP (SR %x CR %x FSR %x FCR %x)\n", _pimxrt_spi->SR, _pimxrt_spi->CR, _pimxrt_spi->FSR, _pimxrt_spi->FCR);
+#ifdef DEBUG_ASYNC_LEDS
+		digitalWriteFast(DEBUG_PIN_3, HIGH);
+#endif
 		writecommand_last(ILI9341_NOP);
+
+//		uint32_t sr = _pimxrt_spi->SR;
+//		Serial4.printf("Before SR wait: %x\n", sr);
+//		while (_pimxrt_spi->SR == sr) ; // Wait until something changes 
+		Serial4.println("Restore FCR");
+		_pimxrt_spi->FCR = _spi_fcr_save;	// restore the FSR status... 
 		Serial4.println("Do End transaction");
 		endSPITransaction();
 		_dma_state &= ~ILI9341_DMA_ACTIVE;
@@ -146,6 +162,8 @@ void ILI9341_t3n::process_dma_interrupt(void) {
 #ifdef DEBUG_ASYNC_LEDS
 		digitalWriteFast(DEBUG_PIN_3, LOW);
 #endif
+ 		Serial4.println("After End transaction");
+
 	}
 #else
 	// T3.5...
@@ -606,8 +624,11 @@ bool ILI9341_t3n::updateScreenAsync(bool update_cont)					// call to say update 
 	// Update TCR to 16 bit mode. and output the first entry.
 	_spi_fcr_save = _pimxrt_spi->FCR;	// remember the FCR
 	_pimxrt_spi->FCR = 0;	// clear water marks... 	
-	maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(15) | LPSPI_TCR_RXMSK | LPSPI_TCR_CONT);
+	//maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(15) | LPSPI_TCR_RXMSK | LPSPI_TCR_CONT);
+	_pimxrt_spi->CFGR1 |= LPSPI_CFGR1_NOSTALL;
+	maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(15) | LPSPI_TCR_CONT);
  	_pimxrt_spi->DER = LPSPI_DER_TDDE;
+	_pimxrt_spi->SR = 0x3f00;	// clear out all of the other status...
 
   	_dmatx.triggerAtHardwareEvent(DMAMUX_SOURCE_LPSPI4_TX );
 
@@ -912,10 +933,12 @@ void ILI9341_t3n::fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 				writedata16_cont(color);
 			}
 			writedata16_last(color);
+#if 0
 			if (y > 1 && (y & 1)) {
 				endSPITransaction();
 				beginSPITransaction();
 			}
+#endif			
 		}
 		endSPITransaction();
 	}
@@ -1339,7 +1362,7 @@ uint16_t ILI9341_t3n::readPixel(int16_t x, int16_t y)
 	return color565(r,g,b);
 #else
 	// Kinetisk
-	uint16_t colors;
+	uint16_t colors = 0;
 	readRect(x, y, 1, 1, &colors);
 	return colors;
 #endif	
@@ -1424,11 +1447,24 @@ void ILI9341_t3n::readRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 #elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x 
 void ILI9341_t3n::readRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t *pcolors)
 {
-#ifdef LATER
 	// Use our Origin. 
 	x+=_originx;
 	y+=_originy;
 	//BUGBUG:: Should add some validation of X and Y
+
+	#ifdef ENABLE_ILI9341_FRAMEBUFFER
+	if (_use_fbtft) {
+		uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
+		for (;h>0; h--) {
+			uint16_t * pfbPixel = pfbPixel_row;
+			for (int i = 0 ;i < w; i++) {
+				*pcolors++ = *pfbPixel++;
+			}
+			pfbPixel_row += _width;
+		}
+		return;	
+	}
+	#endif	
 
    if (_miso == 0xff) return;		// bail if not valid miso
 
@@ -1442,54 +1478,38 @@ void ILI9341_t3n::readRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 	setAddr(x, y, x+w-1, y+h-1);
 	writecommand_cont(ILI9341_RAMRD); // read from RAM
 
+
 	// transmit a DUMMY byte before the color bytes
-	writedata8_cont(0);
+	writedata8_last(0);		// BUGBUG:: maybe fix this as this will wait until the byte fully transfers through.
 
-	// Wait until that one returns, Could do a little better and double buffer but this is easer for now.
-	waitTransmitComplete();
-
-	// Since double buffer setup lets try keeping read/write in sync
-#define RRECT_TIMEOUT 0xffff	
-#undef 	READ_PIXEL_PUSH_BYTE
-#define READ_PIXEL_PUSH_BYTE 0 // try with zero to see... 	
-	uint16_t timeout_countdown = RRECT_TIMEOUT;
-	uint16_t dl_in;
-	// Write out first byte:
-
-	while (!(_pkinetisl_spi->S & SPI_S_SPTEF)) ; // Not worried that this can completely hang?
-	_pkinetisl_spi->DL = READ_PIXEL_PUSH_BYTE;
-
-	while (rxCount && timeout_countdown) {
-		// Now wait until we can output something
-		dl_in = 0xffff;
-		if (rxCount > 1) {
-			while (!(_pkinetisl_spi->S & SPI_S_SPTEF)) ; // Not worried that this can completely hang?
-			if (_pkinetisl_spi->S & SPI_S_SPRF)
-				dl_in = _pkinetisl_spi->DL;  
-			_pkinetisl_spi->DL = READ_PIXEL_PUSH_BYTE;
+	while (txCount || rxCount) {
+		// transmit another byte if possible
+		if (txCount && (_pimxrt_spi->SR & LPSPI_SR_TDF)) {
+			txCount--;
+			if (txCount) {
+				_pimxrt_spi->TDR = 0;
+			} else {
+				maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(7)); // remove the CONTINUE...
+				while ((_pimxrt_spi->SR & LPSPI_SR_TDF) == 0) ;		// wait if queue was full
+				_pimxrt_spi->TDR = 0;
+			}
 		}
 
-		// Now wait until there is a byte available to receive
-		while ((dl_in != 0xffff) && !(_pkinetisl_spi->S & SPI_S_SPRF) && --timeout_countdown) ;
-		if (timeout_countdown) {   // Make sure we did not get here because of timeout 
+		// receive another byte if possible, and either skip it or store the color
+		if (rxCount && !(_pimxrt_spi->RSR & LPSPI_RSR_RXEMPTY)) {
+			rgb[rgbIdx] = _pimxrt_spi->RDR;
+
 			rxCount--;
-			rgb[rgbIdx] = (dl_in != 0xffff)? dl_in : _pkinetisl_spi->DL;
 			rgbIdx++;
 			if (rgbIdx == 3) {
 				rgbIdx = 0;
 				*pcolors++ = color565(rgb[0], rgb[1], rgb[2]);
 			}
-			timeout_countdown = timeout_countdown;
 		}
 	}
 
-	// Debug code. 
-/*	if (timeout_countdown == 0) {
-		Serial.print("RRect Timeout ");
-		Serial.println(rxCount, DEC);
-	} */
+	// We should have received everything so should be done
 	endSPITransaction();
-#endif
 }
 
 #else
