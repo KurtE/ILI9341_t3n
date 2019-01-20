@@ -51,8 +51,8 @@
 #include <SPIN.h>
 #include <SPI.h>  
 
-#define DEBUG_ASYNC_UPDATE  // Enable to print out dma info
-#define DEBUG_ASYNC_LEDS	// Enable to use digitalWrites to Debug
+//#define DEBUG_ASYNC_UPDATE  // Enable to print out dma info
+//#define DEBUG_ASYNC_LEDS	// Enable to use digitalWrites to Debug
 #ifdef DEBUG_ASYNC_LEDS
 #define DEBUG_PIN_1 0
 #define DEBUG_PIN_2 1
@@ -123,14 +123,14 @@ void ILI9341_t3n::process_dma_interrupt(void) {
 		// We are in single refresh mode or the user has called cancel so
 		// Lets try to release the CS pin
 		// Lets wait until FIFO is not empty
-		Serial4.printf("Before FSR wait: %x %x\n", _pimxrt_spi->FSR, _pimxrt_spi->SR);
+		// Serial4.printf("Before FSR wait: %x %x\n", _pimxrt_spi->FSR, _pimxrt_spi->SR);
 		while (_pimxrt_spi->FSR & 0x1f)  ;	// wait until this one is complete
 
-		Serial4.printf("Before SR busy wait: %x\n", _pimxrt_spi->SR);
+		// Serial4.printf("Before SR busy wait: %x\n", _pimxrt_spi->SR);
 		while (_pimxrt_spi->SR & LPSPI_SR_MBF)  ;	// wait until this one is complete
 
 		_dmatx.clearComplete();
-		Serial4.println("Restore FCR");
+		// Serial4.println("Restore FCR");
 		_pimxrt_spi->FCR = LPSPI_FCR_TXWATER(15); // _spi_fcr_save;	// restore the FSR status... 
  		_pimxrt_spi->DER = 0;		// DMA no longer doing TX (or RX)
 
@@ -139,8 +139,8 @@ void ILI9341_t3n::process_dma_interrupt(void) {
 
 
 		maybeUpdateTCR(LPSPI_TCR_PCS(0) | LPSPI_TCR_FRAMESZ(7));	// output Command with 8 bits
-		Serial4.printf("Output NOP (SR %x CR %x FSR %x FCR %x %x TCR:%x)\n", _pimxrt_spi->SR, _pimxrt_spi->CR, _pimxrt_spi->FSR, 
-			_pimxrt_spi->FCR, _spi_fcr_save, _pimxrt_spi->TCR);
+		// Serial4.printf("Output NOP (SR %x CR %x FSR %x FCR %x %x TCR:%x)\n", _pimxrt_spi->SR, _pimxrt_spi->CR, _pimxrt_spi->FSR, 
+		//	_pimxrt_spi->FCR, _spi_fcr_save, _pimxrt_spi->TCR);
 #ifdef DEBUG_ASYNC_LEDS
 		digitalWriteFast(DEBUG_PIN_3, HIGH);
 #endif
@@ -150,12 +150,12 @@ void ILI9341_t3n::process_dma_interrupt(void) {
 		digitalWriteFast(DEBUG_PIN_3, LOW);
 #endif
 
-		Serial4.println("Do End transaction");
+		// Serial4.println("Do End transaction");
 		endSPITransaction();
 		_dma_state &= ~ILI9341_DMA_ACTIVE;
 		_dmaActiveDisplay = 0;	// We don't have a display active any more... 
 
- 		Serial4.println("After End transaction");
+ 		// Serial4.println("After End transaction");
 
 	}
 	_dmatx.clearInterrupt();
@@ -374,7 +374,7 @@ void dumpDMA_TCD(DMABaseClass *dmabc)
 #ifdef ENABLE_ILI9341_FRAMEBUFFER
 void	ILI9341_t3n::initDMASettings(void) 
 {
-	Serial4.printf("initDMASettings called %d\n", _dma_state);
+	// Serial4.printf("initDMASettings called %d\n", _dma_state);
 	if (_dma_state) {  // should test for init, but...
 		return;	// we already init this. 
 	}
@@ -422,8 +422,8 @@ void	ILI9341_t3n::initDMASettings(void)
 #elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
 	// Now lets setup DMA access to this memory... 
 	// Try to do like T3.6 except not kludge for first word...
-	Serial4.println("DMA initDMASettings - before settings");
-	Serial4.printf("  CWW: %d %d %d\n", CBALLOC, SCREEN_DMA_NUM_SETTINGS, COUNT_WORDS_WRITE);
+	// Serial4.println("DMA initDMASettings - before settings");
+	// Serial4.printf("  CWW: %d %d %d\n", CBALLOC, SCREEN_DMA_NUM_SETTINGS, COUNT_WORDS_WRITE);
 	_dmasettings[0].sourceBuffer(&_pfbtft[0], COUNT_WORDS_WRITE*2);
 	_dmasettings[0].destination(_pimxrt_spi->TDR);
 	_dmasettings[0].TCD->ATTR_DST = 1;
@@ -447,7 +447,7 @@ void	ILI9341_t3n::initDMASettings(void)
 
 	// Setup DMA main object
 	//Serial.println("Setup _dmatx");
-	Serial4.println("DMA initDMASettings - before dmatx");
+	// Serial4.println("DMA initDMASettings - before dmatx");
 	_dmatx.begin(true);
 	_dmatx.triggerAtHardwareEvent(dmaTXevent);
 	_dmatx = _dmasettings[0];
@@ -485,7 +485,7 @@ void	ILI9341_t3n::initDMASettings(void)
 
 #endif
 	_dma_state = ILI9341_DMA_INIT;  // Should be first thing set!
-	Serial4.println("DMA initDMASettings - end");
+	// Serial4.println("DMA initDMASettings - end");
 
 }
 
@@ -500,7 +500,7 @@ void ILI9341_t3n::dumpDMASettings() {
 	dumpDMA_TCD(&_dmasettings[2]);
 	dumpDMA_TCD(&_dmasettings[3]);
 #elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
-	Serial4.printf("DMA dump TCDs %d\n", _dmatx.channel);
+	// Serial4.printf("DMA dump TCDs %d\n", _dmatx.channel);
 	dumpDMA_TCD(&_dmatx);
 	dumpDMA_TCD(&_dmasettings[0]);
 	dumpDMA_TCD(&_dmasettings[1]);
@@ -602,6 +602,7 @@ bool ILI9341_t3n::updateScreenAsync(bool update_cont)					// call to say update 
 
 	if (update_cont) {
 		// Try to link in #3 into the chain
+		_dmasettings[3].TCD->CSR &= ~( DMA_TCD_CSR_DREQ);  // Don't disable on completion.
 	} else {
 		// In this case we will only run through once...
 		_dmasettings[3].disableOnCompletion();
