@@ -523,7 +523,7 @@ class ILI9341_t3n : public Print
 		_pspin->waitTransmitComplete(mcr);
 	}
 #elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x 
-	#define TCR_MASK  (LPSPI_TCR_PCS(3) | LPSPI_TCR_FRAMESZ(31) | LPSPI_TCR_CONT)
+	#define TCR_MASK  (LPSPI_TCR_PCS(3) | LPSPI_TCR_FRAMESZ(31) | LPSPI_TCR_CONT | LPSPI_TCR_RXMSK )
 	void maybeUpdateTCR(uint32_t requested_tcr_state) /*__attribute__((always_inline)) */ {
 		if ((_spi_tcr_current & TCR_MASK) != requested_tcr_state) {
 			_spi_tcr_current = (_spi_tcr_current & ~TCR_MASK) | requested_tcr_state ;

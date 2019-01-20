@@ -118,53 +118,48 @@ void ILI9341_t3n::process_dma_interrupt(void) {
 	// T4
 
 	_dma_frame_count++;
-	_dmatx.clearInterrupt();
 
 	if ((_dma_state & ILI9341_DMA_CONT) == 0) {
-		_dmatx.clearComplete();
 		// We are in single refresh mode or the user has called cancel so
 		// Lets try to release the CS pin
 		// Lets wait until FIFO is not empty
-		Serial4.printf("Before FSR wait: %x\n", _pimxrt_spi->FSR);
- 		_pimxrt_spi->DER = 0;		// DMA no longer doing TX (or RX)
-		_pimxrt_spi->CFGR1 &= ~LPSPI_CFGR1_NOSTALL;
+		Serial4.printf("Before FSR wait: %x %x\n", _pimxrt_spi->FSR, _pimxrt_spi->SR);
 		while (_pimxrt_spi->FSR & 0x1f)  ;	// wait until this one is complete
 
-#if 0
+		Serial4.printf("Before SR busy wait: %x\n", _pimxrt_spi->SR);
+		while (_pimxrt_spi->SR & LPSPI_SR_MBF)  ;	// wait until this one is complete
 
-		//_pimxrt_spi->CR = LPSPI_CR_RRF | LPSPI_CR_MEN;	// clear out FIFO
-		//_pimxrt_spi->SR = 0x3f00;	// clear out all of the other status...
-		uint32_t sr = _pimxrt_spi->SR;
-		Serial4.printf("Before SR wait: %x\n", sr);
-		while (_pimxrt_spi->SR == sr) ; // Wait until something changes 
-#endif
-		_pimxrt_spi->CR = LPSPI_CR_RRF | LPSPI_CR_MEN;	// clear out FIFO
-
+		_dmatx.clearComplete();
+		Serial4.println("Restore FCR");
+		_pimxrt_spi->FCR = LPSPI_FCR_TXWATER(15); // _spi_fcr_save;	// restore the FSR status... 
  		_pimxrt_spi->DER = 0;		// DMA no longer doing TX (or RX)
-		// Now lets try output NOP and see if that works...
-		// Before restoring FCR
-		Serial4.printf("Output NOP (SR %x CR %x FSR %x FCR %x)\n", _pimxrt_spi->SR, _pimxrt_spi->CR, _pimxrt_spi->FSR, _pimxrt_spi->FCR);
+
+		_pimxrt_spi->CR = LPSPI_CR_MEN | LPSPI_CR_RRF | LPSPI_CR_RTF;   // actually clear both...
+		_pimxrt_spi->SR = 0x3f00;	// clear out all of the other status...
+
+
+		maybeUpdateTCR(LPSPI_TCR_PCS(0) | LPSPI_TCR_FRAMESZ(7));	// output Command with 8 bits
+		Serial4.printf("Output NOP (SR %x CR %x FSR %x FCR %x %x TCR:%x)\n", _pimxrt_spi->SR, _pimxrt_spi->CR, _pimxrt_spi->FSR, 
+			_pimxrt_spi->FCR, _spi_fcr_save, _pimxrt_spi->TCR);
 #ifdef DEBUG_ASYNC_LEDS
 		digitalWriteFast(DEBUG_PIN_3, HIGH);
 #endif
+		_pspin->pending_rx_count = 0;	// Make sure count is zero
 		writecommand_last(ILI9341_NOP);
+#ifdef DEBUG_ASYNC_LEDS
+		digitalWriteFast(DEBUG_PIN_3, LOW);
+#endif
 
-//		uint32_t sr = _pimxrt_spi->SR;
-//		Serial4.printf("Before SR wait: %x\n", sr);
-//		while (_pimxrt_spi->SR == sr) ; // Wait until something changes 
-		Serial4.println("Restore FCR");
-		_pimxrt_spi->FCR = _spi_fcr_save;	// restore the FSR status... 
 		Serial4.println("Do End transaction");
 		endSPITransaction();
 		_dma_state &= ~ILI9341_DMA_ACTIVE;
 		_dmaActiveDisplay = 0;	// We don't have a display active any more... 
 
-#ifdef DEBUG_ASYNC_LEDS
-		digitalWriteFast(DEBUG_PIN_3, LOW);
-#endif
  		Serial4.println("After End transaction");
 
 	}
+	_dmatx.clearInterrupt();
+
 #else
 	// T3.5...
 	_dmarx.clearInterrupt();
@@ -624,9 +619,9 @@ bool ILI9341_t3n::updateScreenAsync(bool update_cont)					// call to say update 
 	// Update TCR to 16 bit mode. and output the first entry.
 	_spi_fcr_save = _pimxrt_spi->FCR;	// remember the FCR
 	_pimxrt_spi->FCR = 0;	// clear water marks... 	
-	//maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(15) | LPSPI_TCR_RXMSK | LPSPI_TCR_CONT);
-	_pimxrt_spi->CFGR1 |= LPSPI_CFGR1_NOSTALL;
-	maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(15) | LPSPI_TCR_CONT);
+	maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(15) | LPSPI_TCR_RXMSK /*| LPSPI_TCR_CONT*/);
+//	_pimxrt_spi->CFGR1 |= LPSPI_CFGR1_NOSTALL;
+//	maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(15) | LPSPI_TCR_CONT);
  	_pimxrt_spi->DER = LPSPI_DER_TDDE;
 	_pimxrt_spi->SR = 0x3f00;	// clear out all of the other status...
 
