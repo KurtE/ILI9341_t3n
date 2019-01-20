@@ -351,12 +351,13 @@ class ILI9341_t3n : public Print
 	void	waitUpdateAsyncComplete(void);
 	void	endUpdateAsync();			 // Turn of the continueous mode fla
 	void	dumpDMASettings();
-	uint32_t frameCount() {return _dma_frame_count; }
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
+	uint32_t frameCount() {return _dma_frame_count; }
 	boolean	asyncUpdateActive(void)  {return (_dma_state & ILI9341_DMA_ACTIVE);}
 	void	initDMASettings(void);
 	#else
 	boolean	asyncUpdateActive(void)  {return false;}
+	uint32_t frameCount() {return 0; }
 	#endif
  protected:
  	SPINClass *_pspin;

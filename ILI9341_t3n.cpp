@@ -317,6 +317,7 @@ void dumpDMA_TCD(DMABaseClass *dmabc)
 }
 #endif
 
+#ifdef ENABLE_ILI9341_FRAMEBUFFER
 //==============================================
 void	ILI9341_t3n::initDMASettings(void) 
 {
@@ -399,6 +400,7 @@ void	ILI9341_t3n::initDMASettings(void)
 #endif
 	_dma_state = ILI9341_DMA_INIT;  // Should be first thing set!
 }
+#endif
 
 void ILI9341_t3n::dumpDMASettings() {
 #ifdef DEBUG_ASYNC_UPDATE
