@@ -434,7 +434,7 @@ void	ILI9341_t3n::initDMASettings(void)
 	_dmasettings[1].TCD->ATTR_DST = 1;
 	_dmasettings[1].replaceSettingsOnCompletion(_dmasettings[2]);
 
-	_dmasettings[2].sourceBuffer(&_pfbtft[COUNT_WORDS_WRITE], COUNT_WORDS_WRITE*2);
+	_dmasettings[2].sourceBuffer(&_pfbtft[COUNT_WORDS_WRITE*2], COUNT_WORDS_WRITE*2);
 	_dmasettings[2].destination(_pimxrt_spi->TDR);
 	_dmasettings[2].TCD->ATTR_DST = 1;
 	_dmasettings[2].replaceSettingsOnCompletion(_dmasettings[3]);
