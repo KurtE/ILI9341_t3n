@@ -1181,7 +1181,6 @@ uint8_t ILI9341_t3n::readcommand8(uint8_t c, uint8_t index)
     uint16_t wTimeout = 0xffff;
     uint8_t r=0;
 
-
     beginSPITransaction();
 	if (_pspin->sizeFIFO() >= 4) {
 	    while (((_pkinetisk_spi->SR) & (15 << 12)) && (--wTimeout)) ; // wait until empty
@@ -1286,6 +1285,40 @@ uint8_t ILI9341_t3n::readcommand8(uint8_t c, uint8_t index)
 	    }
 
 	}  
+    endSPITransaction();
+    return r;  // get the received byte... should check for it first...
+#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x 
+    uint16_t wTimeout = 0xffff;
+    uint8_t r=0;
+
+    beginSPITransaction(ILI9341_SPICLOCK_READ);
+    // Lets assume that queues are empty as we just started transaction.
+	_pimxrt_spi->CR = LPSPI_CR_MEN | LPSPI_CR_RRF | LPSPI_CR_RTF;   // actually clear both...
+    //writecommand(0xD9); // sekret command
+    maybeUpdateTCR(LPSPI_TCR_PCS(0) | LPSPI_TCR_FRAMESZ(7) | LPSPI_TCR_CONT);
+	_pimxrt_spi->TDR = 0xD9;
+
+    // writedata(0x10 + index);
+	maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(7) | LPSPI_TCR_CONT);
+	_pimxrt_spi->TDR = 0x10 + index;
+
+    // writecommand(c);
+    maybeUpdateTCR(LPSPI_TCR_PCS(0) | LPSPI_TCR_FRAMESZ(7) | LPSPI_TCR_CONT);
+	_pimxrt_spi->TDR = c;
+
+    // readdata
+	maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(7));
+	_pimxrt_spi->TDR = 0;
+
+    // Now wait until completed.
+    wTimeout = 0xffff;
+    uint8_t rx_count = 4;
+    while (rx_count && wTimeout) {
+        if ((_pimxrt_spi->RSR & LPSPI_RSR_RXEMPTY) == 0)  {
+            r =_pimxrt_spi->RDR;  // Read any pending RX bytes in
+            rx_count--; //decrement count of bytes still levt
+        }
+    }
     endSPITransaction();
     return r;  // get the received byte... should check for it first...
 #else

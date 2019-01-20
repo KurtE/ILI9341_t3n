@@ -573,18 +573,6 @@ class ILI9341_t3n : public Print
 		_pspin->pending_rx_count++;	//
 		_pspin->waitTransmitComplete();
 	}
-	uint16_t waitTransmitCompleteReturnLast()  {
-	    uint16_t val=0;
-    	do {
-        	if ((_pimxrt_spi->RSR & LPSPI_RSR_RXEMPTY) == 0)  {
-            	val = _pimxrt_spi->RDR;  // Read any pending RX bytes in
-	        }
-		} while ((_pimxrt_spi->SR & LPSPI_SR_TCF) == 0) ;
-    	while ((_pimxrt_spi->RSR & LPSPI_RSR_RXEMPTY) == 0)  {
-        	val = _pimxrt_spi->RDR;  // Read any pending RX bytes in
-        }
-		return val;
-	}
 
 #elif defined (KINETISL)
 // Lets see how hard to make it work OK with T-LC
