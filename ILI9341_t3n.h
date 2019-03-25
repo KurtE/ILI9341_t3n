@@ -64,6 +64,10 @@
 #define ENABLE_ILI9341_FRAMEBUFFER
 //#define SCREEN_DMA_NUM_SETTINGS (((uint32_t)((2 * ILI9341_TFTHEIGHT * ILI9341_TFTWIDTH) / 65536UL))+1)
 #define SCREEN_DMA_NUM_SETTINGS 3 // see if making it a constant value makes difference...
+#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)
+#define ENABLE_ILI9341_FRAMEBUFFER
+//#define SCREEN_DMA_NUM_SETTINGS (((uint32_t)((2 * ILI9341_TFTHEIGHT * ILI9341_TFTWIDTH) / 65536UL))+1)
+#define SCREEN_DMA_NUM_SETTINGS 4 // see if making it a constant value makes difference...
 #endif
 #endif
 
@@ -191,6 +195,9 @@ typedef struct {
 // At all other speeds, ILI9241_KINETISK__pspi->beginTransaction() will use the fastest available clock
 #ifdef KINETISK
 #define ILI9341_SPICLOCK 30000000
+#define ILI9341_SPICLOCK_READ 2000000
+#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
+#define ILI9341_SPICLOCK 144000000u
 #define ILI9341_SPICLOCK_READ 2000000
 #else
 #define ILI9341_SPICLOCK 30000000
@@ -344,6 +351,7 @@ class ILI9341_t3n : public Print
 
 	// added support to use optional Frame buffer
 	void	setFrameBuffer(uint16_t *frame_buffer);
+	uint16_t *getFrameBuffer() {return _pfbtft;}
 	uint8_t useFrameBuffer(boolean b);		// use the frame buffer?  First call will allocate
 	void	freeFrameBuffer(void);			// explicit call to release the buffer
 	void	updateScreen(void);				// call to say update the screen now. 
@@ -356,15 +364,18 @@ class ILI9341_t3n : public Print
 	boolean	asyncUpdateActive(void)  {return (_dma_state & ILI9341_DMA_ACTIVE);}
 	void	initDMASettings(void);
 	#else
+	uint32_t frameCount() {return 0; }
 	boolean	asyncUpdateActive(void)  {return false;}
 	uint32_t frameCount() {return 0; }
 	#endif
  protected:
  	SPINClass *_pspin;
-#ifdef KINETISK
+#if defined(KINETISK)
  	KINETISK_SPI_t *_pkinetisk_spi;
-#endif
-#ifdef KINETISL
+#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
+ 	IMXRT_LPSPI_t *_pimxrt_spi;
+
+#elif defined(KINETISL)
  	KINETISL_SPI_t *_pkinetisl_spi;
 #endif
 
@@ -402,8 +413,16 @@ class ILI9341_t3n : public Print
 	uint8_t pcs_data, pcs_command;
 	uint8_t _miso, _mosi, _sclk;
 	// add support to allow only one hardware CS (used for dc)
+#if defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
+    uint32_t _cspinmask;
+    volatile uint32_t *_csport;
+    uint32_t _spi_tcr_current;
+    uint32_t _dcpinmask;
+    volatile uint32_t *_dcport;
+#else
     uint8_t _cspinmask;
     volatile uint8_t *_csport;
+#endif
 #ifdef KINETISL
     volatile uint8_t  *_dcport;
     uint8_t _dcpinmask;
@@ -412,7 +431,7 @@ class ILI9341_t3n : public Print
     // Add support for optional frame buffer
     uint16_t	*_pfbtft;						// Optional Frame buffer 
     uint8_t		_use_fbtft;						// Are we in frame buffer mode?
-    uint8_t		_we_allocated_buffer;			// We allocated the buffer; 
+    uint16_t	*_we_allocated_buffer;			// We allocated the buffer; 
     // Add DMA support. 
 	static  ILI9341_t3n 		*_dmaActiveDisplay;  // Use pointer to this as a way to get back to object...
 	static volatile uint8_t  	_dma_state;  		// DMA status
@@ -421,6 +440,11 @@ class ILI9341_t3n : public Print
 	// T3.6 use Scatter/gather with chain to do transfer
 	static DMASetting 	_dmasettings[4];
 	static DMAChannel  	_dmatx;
+	#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
+	// Going to try it similar to T4.
+	static DMASetting 	_dmasettings[4];
+	static DMAChannel  	_dmatx;
+	uint32_t 			_spi_fcr_save;		// save away previous FCR register value
 	#else
 	// T3.5 - had issues scatter/gather so do just use channels/interrupts
 	// and update and continue
@@ -442,17 +466,38 @@ class ILI9341_t3n : public Print
 		writedata16_cont(y0);   // YSTART
 		writedata16_cont(y1);   // YEND
 	}
+//. From Onewire utility files
+#if defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
+
+	void DIRECT_WRITE_LOW(volatile uint32_t * base, uint32_t mask)  __attribute__((always_inline)) {
+		*(base+34) = mask;
+	}
+	void DIRECT_WRITE_HIGH(volatile uint32_t * base, uint32_t mask)  __attribute__((always_inline)) {
+		*(base+33) = mask;
+	}
+#endif
+
 	void beginSPITransaction(uint32_t clock = ILI9341_SPICLOCK) __attribute__((always_inline)) {
 		_pspin->beginTransaction(SPISettings(clock, MSBFIRST, SPI_MODE0));
-		if (_csport)
+		if (_csport) {
+#if defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x 
+			DIRECT_WRITE_LOW(_csport, _cspinmask);
+#else
 			*_csport  &= ~_cspinmask;
+#endif
+		}
 	}
 	void endSPITransaction() __attribute__((always_inline)) {
-		if (_csport)
+		if (_csport) {
+#if defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x 
+			DIRECT_WRITE_HIGH(_csport, _cspinmask);
+#else
 			*_csport |= _cspinmask;
+#endif
+		}
 		_pspin->endTransaction();
 	}
-#ifdef KINETISK	
+#if defined(KINETISK)	
 	void writecommand_cont(uint8_t c) __attribute__((always_inline)) {
 		_pkinetisk_spi->PUSHR = c | (pcs_command << 16) | SPI_PUSHR_CTAS(0) | SPI_PUSHR_CONT;
 		_pspin->waitFifoNotFull();
@@ -480,9 +525,70 @@ class ILI9341_t3n : public Print
 		_pkinetisk_spi->PUSHR = d | (pcs_data << 16) | SPI_PUSHR_CTAS(1) | SPI_PUSHR_EOQ;
 		_pspin->waitTransmitComplete(mcr);
 	}
-#endif
+#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x 
+	#define TCR_MASK  (LPSPI_TCR_PCS(3) | LPSPI_TCR_FRAMESZ(31) | LPSPI_TCR_CONT | LPSPI_TCR_RXMSK )
+	void maybeUpdateTCR(uint32_t requested_tcr_state) /*__attribute__((always_inline)) */ {
+		if ((_spi_tcr_current & TCR_MASK) != requested_tcr_state) {
+			bool dc_state_change = (_spi_tcr_current & LPSPI_TCR_PCS(3)) != (requested_tcr_state & LPSPI_TCR_PCS(3));
+			_spi_tcr_current = (_spi_tcr_current & ~TCR_MASK) | requested_tcr_state ;
+			// only output when Transfer queue is empty.
+			if (!dc_state_change || !_dcpinmask) {
+				while ((_pimxrt_spi->FSR & 0x1f) )	;
+				_pimxrt_spi->TCR = _spi_tcr_current;	// update the TCR
+
+			} else {
+				_pspin->waitTransmitComplete();
+				if (requested_tcr_state & LPSPI_TCR_PCS(3)) DIRECT_WRITE_HIGH(_dcport, _dcpinmask);
+				else DIRECT_WRITE_LOW(_dcport, _dcpinmask);
+				_pimxrt_spi->TCR = _spi_tcr_current & ~(LPSPI_TCR_PCS(3) | LPSPI_TCR_CONT);	// go ahead and update TCR anyway?  
+
+			}
+		}
+	}
+
+	// BUGBUG:: currently assumming we only have CS_0 as valid CS
+	void writecommand_cont(uint8_t c) __attribute__((always_inline)) {
+		maybeUpdateTCR(LPSPI_TCR_PCS(0) | LPSPI_TCR_FRAMESZ(7) /*| LPSPI_TCR_CONT*/);
+		_pimxrt_spi->TDR = c;
+		_pspin->pending_rx_count++;	//
+		_pspin->waitFifoNotFull();
+	}
+	void writedata8_cont(uint8_t c) __attribute__((always_inline)) {
+		maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(7) | LPSPI_TCR_CONT);
+		_pimxrt_spi->TDR = c;
+		_pspin->pending_rx_count++;	//
+		_pspin->waitFifoNotFull();
+	}
+	void writedata16_cont(uint16_t d) __attribute__((always_inline)) {
+		maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(15) | LPSPI_TCR_CONT);
+		_pimxrt_spi->TDR = d;
+		_pspin->pending_rx_count++;	//
+		_pspin->waitFifoNotFull();
+	}
+	void writecommand_last(uint8_t c) __attribute__((always_inline)) {
+		maybeUpdateTCR(LPSPI_TCR_PCS(0) | LPSPI_TCR_FRAMESZ(7));
+		_pimxrt_spi->TDR = c;
+//		_pimxrt_spi->SR = LPSPI_SR_WCF | LPSPI_SR_FCF | LPSPI_SR_TCF;
+		_pspin->pending_rx_count++;	//
+		_pspin->waitTransmitComplete();
+	}
+	void writedata8_last(uint8_t c) __attribute__((always_inline)) {
+		maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(7));
+		_pimxrt_spi->TDR = c;
+//		_pimxrt_spi->SR = LPSPI_SR_WCF | LPSPI_SR_FCF | LPSPI_SR_TCF;
+		_pspin->pending_rx_count++;	//
+		_pspin->waitTransmitComplete();
+	}
+	void writedata16_last(uint16_t d) __attribute__((always_inline)) {
+		maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(15));
+		_pimxrt_spi->TDR = d;
+//		_pimxrt_spi->SR = LPSPI_SR_WCF | LPSPI_SR_FCF | LPSPI_SR_TCF;
+		_pspin->pending_rx_count++;	//
+		_pspin->waitTransmitComplete();
+	}
+
+#elif defined (KINETISL)
 // Lets see how hard to make it work OK with T-LC
-#ifdef KINETISL
 	uint8_t _dcpinAsserted;
 	uint8_t _data_sent_not_completed;
 	void waitTransmitComplete()  {

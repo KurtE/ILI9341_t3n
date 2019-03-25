@@ -67,6 +67,9 @@
 	// T3.6 use Scatter/gather with chain to do transfer
 DMASetting 	ILI9341_t3n::_dmasettings[4];
 DMAChannel 	ILI9341_t3n::_dmatx;
+#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
+DMASetting 	ILI9341_t3n::_dmasettings[4];
+DMAChannel 	ILI9341_t3n::_dmatx;
 #else
 // T3.5 - had issues scatter/gather so do just use channels/interrupts
 // and update and continue
@@ -111,6 +114,52 @@ void ILI9341_t3n::process_dma_interrupt(void) {
 		_dmaActiveDisplay = 0;	// We don't have a display active any more... 
 
 	}
+#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
+	// T4
+
+	_dma_frame_count++;
+
+	if ((_dma_state & ILI9341_DMA_CONT) == 0) {
+		// We are in single refresh mode or the user has called cancel so
+		// Lets try to release the CS pin
+		// Lets wait until FIFO is not empty
+		// Serial4.printf("Before FSR wait: %x %x\n", _pimxrt_spi->FSR, _pimxrt_spi->SR);
+		while (_pimxrt_spi->FSR & 0x1f)  ;	// wait until this one is complete
+
+		// Serial4.printf("Before SR busy wait: %x\n", _pimxrt_spi->SR);
+		while (_pimxrt_spi->SR & LPSPI_SR_MBF)  ;	// wait until this one is complete
+
+		_dmatx.clearComplete();
+		// Serial4.println("Restore FCR");
+		_pimxrt_spi->FCR = LPSPI_FCR_TXWATER(15); // _spi_fcr_save;	// restore the FSR status... 
+ 		_pimxrt_spi->DER = 0;		// DMA no longer doing TX (or RX)
+
+		_pimxrt_spi->CR = LPSPI_CR_MEN | LPSPI_CR_RRF | LPSPI_CR_RTF;   // actually clear both...
+		_pimxrt_spi->SR = 0x3f00;	// clear out all of the other status...
+
+
+		maybeUpdateTCR(LPSPI_TCR_PCS(0) | LPSPI_TCR_FRAMESZ(7));	// output Command with 8 bits
+		// Serial4.printf("Output NOP (SR %x CR %x FSR %x FCR %x %x TCR:%x)\n", _pimxrt_spi->SR, _pimxrt_spi->CR, _pimxrt_spi->FSR, 
+		//	_pimxrt_spi->FCR, _spi_fcr_save, _pimxrt_spi->TCR);
+#ifdef DEBUG_ASYNC_LEDS
+		digitalWriteFast(DEBUG_PIN_3, HIGH);
+#endif
+		_pspin->pending_rx_count = 0;	// Make sure count is zero
+		writecommand_last(ILI9341_NOP);
+#ifdef DEBUG_ASYNC_LEDS
+		digitalWriteFast(DEBUG_PIN_3, LOW);
+#endif
+
+		// Serial4.println("Do End transaction");
+		endSPITransaction();
+		_dma_state &= ~ILI9341_DMA_ACTIVE;
+		_dmaActiveDisplay = 0;	// We don't have a display active any more... 
+
+ 		// Serial4.println("After End transaction");
+
+	}
+	_dmatx.clearInterrupt();
+
 #else
 	// T3.5...
 	_dmarx.clearInterrupt();
@@ -187,6 +236,8 @@ ILI9341_t3n::ILI9341_t3n(uint8_t cs, uint8_t dc, uint8_t rst,
 	_pspin	  = pspin; 
 #ifdef KINETISK	
 	_pkinetisk_spi = &_pspin->port();
+#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
+ 	_pimxrt_spi = &_pspin->port();
 #else
 	_pkinetisl_spi = &_pspin->port();
 #endif	
@@ -207,7 +258,7 @@ ILI9341_t3n::ILI9341_t3n(uint8_t cs, uint8_t dc, uint8_t rst,
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
     _pfbtft = NULL;	
     _use_fbtft = 0;						// Are we in frame buffer mode?
-	_we_allocated_buffer = 0;
+	_we_allocated_buffer = NULL;
     #endif
 
 }
@@ -233,11 +284,12 @@ uint8_t ILI9341_t3n::useFrameBuffer(boolean b)		// use the frame buffer?  First 
 	if (b) {
 		// First see if we need to allocate buffer
 		if (_pfbtft == NULL) {
-			_pfbtft = (uint16_t *)malloc(CBALLOC);
-			if (_pfbtft == NULL)
+			// Hack to start frame buffer on 32 byte boundary
+			_we_allocated_buffer = (uint16_t *)malloc(CBALLOC+32);
+			if (_we_allocated_buffer == NULL)
 				return 0;	// failed 
+			_pfbtft = (uint16_t*) (((uintptr_t)_we_allocated_buffer + 32) & ~ ((uintptr_t) (31)));
 			memset(_pfbtft, 0, CBALLOC);	
-			_we_allocated_buffer = 1;
 		}
 		_use_fbtft = 1;
 	} else 
@@ -252,10 +304,11 @@ uint8_t ILI9341_t3n::useFrameBuffer(boolean b)		// use the frame buffer?  First 
 void ILI9341_t3n::freeFrameBuffer(void)						// explicit call to release the buffer
 {
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
-	if (_we_allocated_buffer && (_pfbtft != NULL)) {
+	if (_we_allocated_buffer) {
+		free(_we_allocated_buffer);
 		_pfbtft = NULL;
 		_use_fbtft = 0;	// make sure the use is turned off
-		_we_allocated_buffer = 0;
+		_we_allocated_buffer = NULL;
 	}
 	#endif
 }
@@ -309,9 +362,9 @@ void ILI9341_t3n::updateScreen(void)					// call to say update the screen now.
 #ifdef DEBUG_ASYNC_UPDATE
 void dumpDMA_TCD(DMABaseClass *dmabc)
 {
-	Serial.printf("%x %x:", (uint32_t)dmabc, (uint32_t)dmabc->TCD);
+	Serial4.printf("%x %x:", (uint32_t)dmabc, (uint32_t)dmabc->TCD);
 
-	Serial.printf("SA:%x SO:%d AT:%x NB:%x SL:%d DA:%x DO: %d CI:%x DL:%x CS:%x BI:%x\n", (uint32_t)dmabc->TCD->SADDR,
+	Serial4.printf("SA:%x SO:%d AT:%x NB:%x SL:%d DA:%x DO: %d CI:%x DL:%x CS:%x BI:%x\n", (uint32_t)dmabc->TCD->SADDR,
 		dmabc->TCD->SOFF, dmabc->TCD->ATTR, dmabc->TCD->NBYTES, dmabc->TCD->SLAST, (uint32_t)dmabc->TCD->DADDR, 
 		dmabc->TCD->DOFF, dmabc->TCD->CITER, dmabc->TCD->DLASTSGA, dmabc->TCD->CSR, dmabc->TCD->BITER);
 }
@@ -319,9 +372,10 @@ void dumpDMA_TCD(DMABaseClass *dmabc)
 
 #ifdef ENABLE_ILI9341_FRAMEBUFFER
 //==============================================
+#ifdef ENABLE_ILI9341_FRAMEBUFFER
 void	ILI9341_t3n::initDMASettings(void) 
 {
-	Serial.printf("initDMASettings called %d\n", _dma_state);
+	// Serial4.printf("initDMASettings called %d\n", _dma_state);
 	if (_dma_state) {  // should test for init, but...
 		return;	// we already init this. 
 	}
@@ -366,6 +420,39 @@ void	ILI9341_t3n::initDMASettings(void)
 	_dmatx.triggerAtHardwareEvent(dmaTXevent);
 	_dmatx = _dmasettings[0];
 	_dmatx.attachInterrupt(dmaInterrupt);
+#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
+	// Now lets setup DMA access to this memory... 
+	// Try to do like T3.6 except not kludge for first word...
+	// Serial4.println("DMA initDMASettings - before settings");
+	// Serial4.printf("  CWW: %d %d %d\n", CBALLOC, SCREEN_DMA_NUM_SETTINGS, COUNT_WORDS_WRITE);
+	_dmasettings[0].sourceBuffer(&_pfbtft[0], COUNT_WORDS_WRITE*2);
+	_dmasettings[0].destination(_pimxrt_spi->TDR);
+	_dmasettings[0].TCD->ATTR_DST = 1;
+	_dmasettings[0].replaceSettingsOnCompletion(_dmasettings[1]);
+
+	_dmasettings[1].sourceBuffer(&_pfbtft[COUNT_WORDS_WRITE], COUNT_WORDS_WRITE*2);
+	_dmasettings[1].destination(_pimxrt_spi->TDR);
+	_dmasettings[1].TCD->ATTR_DST = 1;
+	_dmasettings[1].replaceSettingsOnCompletion(_dmasettings[2]);
+
+	_dmasettings[2].sourceBuffer(&_pfbtft[COUNT_WORDS_WRITE*2], COUNT_WORDS_WRITE*2);
+	_dmasettings[2].destination(_pimxrt_spi->TDR);
+	_dmasettings[2].TCD->ATTR_DST = 1;
+	_dmasettings[2].replaceSettingsOnCompletion(_dmasettings[3]);
+
+	_dmasettings[3].sourceBuffer(&_pfbtft[COUNT_WORDS_WRITE*3], COUNT_WORDS_WRITE*2);
+	_dmasettings[3].destination(_pimxrt_spi->TDR);
+	_dmasettings[3].TCD->ATTR_DST = 1;
+	_dmasettings[3].replaceSettingsOnCompletion(_dmasettings[0]);
+	_dmasettings[3].interruptAtCompletion();
+
+	// Setup DMA main object
+	//Serial.println("Setup _dmatx");
+	// Serial4.println("DMA initDMASettings - before dmatx");
+	_dmatx.begin(true);
+	_dmatx.triggerAtHardwareEvent(dmaTXevent);
+	_dmatx = _dmasettings[0];
+	_dmatx.attachInterrupt(dmaInterrupt);
 #else
 	// T3.5
 	// Lets setup the write size.  For SPI we can use up to 32767 so same size as we use on T3.6...
@@ -399,6 +486,8 @@ void	ILI9341_t3n::initDMASettings(void)
 
 #endif
 	_dma_state = ILI9341_DMA_INIT;  // Should be first thing set!
+	// Serial4.println("DMA initDMASettings - end");
+
 }
 #endif
 
@@ -407,6 +496,13 @@ void ILI9341_t3n::dumpDMASettings() {
 #if defined(__MK66FX1M0__) 
 	// T3.6
 	Serial.printf("DMA dump TCDs %d\n", _dmatx.channel);
+	dumpDMA_TCD(&_dmatx);
+	dumpDMA_TCD(&_dmasettings[0]);
+	dumpDMA_TCD(&_dmasettings[1]);
+	dumpDMA_TCD(&_dmasettings[2]);
+	dumpDMA_TCD(&_dmasettings[3]);
+#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
+	// Serial4.printf("DMA dump TCDs %d\n", _dmatx.channel);
 	dumpDMA_TCD(&_dmatx);
 	dumpDMA_TCD(&_dmasettings[0]);
 	dumpDMA_TCD(&_dmasettings[1]);
@@ -459,6 +555,9 @@ bool ILI9341_t3n::updateScreenAsync(bool update_cont)					// call to say update 
 	}
 
 #if defined(__MK66FX1M0__) 
+	//==========================================
+	// T3.6
+	//==========================================
 	if (update_cont) {
 		// Try to link in #3 into the chain
 		_dmasettings[2].replaceSettingsOnCompletion(_dmasettings[3]);
@@ -497,6 +596,55 @@ bool ILI9341_t3n::updateScreenAsync(bool update_cont)					// call to say update 
 	_pkinetisk_spi->RSER |= SPI_RSER_TFFF_DIRS |	 SPI_RSER_TFFF_RE;	 // Set DMA Interrupt Request Select and Enable register
 	_pkinetisk_spi->MCR &= ~SPI_MCR_HALT;  //Start transfers.
 	_dmatx.enable();
+	//==========================================
+	// T4
+	//==========================================
+#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
+	// TODO
+
+	if (update_cont) {
+		// Try to link in #3 into the chain
+		_dmasettings[3].TCD->CSR &= ~( DMA_TCD_CSR_DREQ);  // Don't disable on completion.
+	} else {
+		// In this case we will only run through once...
+		_dmasettings[3].disableOnCompletion();
+		_dma_state &= ~ILI9341_DMA_CONT;
+	}
+#ifdef DEBUG_ASYNC_UPDATE
+	dumpDMASettings();
+#endif
+
+	beginSPITransaction();
+	// Doing full window. 
+	setAddr(0, 0, _width-1, _height-1);
+	writecommand_last(ILI9341_RAMWR);
+
+	// Update TCR to 16 bit mode. and output the first entry.
+	_spi_fcr_save = _pimxrt_spi->FCR;	// remember the FCR
+	_pimxrt_spi->FCR = 0;	// clear water marks... 	
+	maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(15) | LPSPI_TCR_RXMSK /*| LPSPI_TCR_CONT*/);
+//	_pimxrt_spi->CFGR1 |= LPSPI_CFGR1_NOSTALL;
+//	maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(15) | LPSPI_TCR_CONT);
+ 	_pimxrt_spi->DER = LPSPI_DER_TDDE;
+	_pimxrt_spi->SR = 0x3f00;	// clear out all of the other status...
+
+  	_dmatx.triggerAtHardwareEvent(DMAMUX_SOURCE_LPSPI4_TX );
+
+ 	_dmatx = _dmasettings[0];
+
+  	_dmatx.begin(false);
+  	_dmatx.enable();
+
+	_dma_frame_count = 0;  // Set frame count back to zero. 
+	_dmaActiveDisplay = this;
+	if (update_cont) {
+		_dma_state |= ILI9341_DMA_CONT;
+	} else {
+		_dma_state &= ~ILI9341_DMA_CONT;
+
+	}
+
+	_dma_state |= ILI9341_DMA_ACTIVE;
 #else
 	//==========================================
 	// T3.5
@@ -570,6 +718,8 @@ void ILI9341_t3n::endUpdateAsync() {
 		_dma_state &= ~ILI9341_DMA_CONT; // Turn of the continueous mode
 #if defined(__MK66FX1M0__) 
 		_dmasettings[3].disableOnCompletion();
+#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
+		_dmasettings[3].disableOnCompletion();
 #endif
 	}
 	#endif
@@ -590,7 +740,7 @@ void ILI9341_t3n::waitUpdateAsyncComplete(void)
 #endif
 	#endif	
 }
-
+#endif
 //=======================================================================
 
 
@@ -781,10 +931,12 @@ void ILI9341_t3n::fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 				writedata16_cont(color);
 			}
 			writedata16_last(color);
+#if 0
 			if (y > 1 && (y & 1)) {
 				endSPITransaction();
 				beginSPITransaction();
 			}
+#endif			
 		}
 		endSPITransaction();
 	}
@@ -1027,7 +1179,6 @@ uint8_t ILI9341_t3n::readcommand8(uint8_t c, uint8_t index)
     uint16_t wTimeout = 0xffff;
     uint8_t r=0;
 
-
     beginSPITransaction();
 	if (_pspin->sizeFIFO() >= 4) {
 	    while (((_pkinetisk_spi->SR) & (15 << 12)) && (--wTimeout)) ; // wait until empty
@@ -1134,6 +1285,40 @@ uint8_t ILI9341_t3n::readcommand8(uint8_t c, uint8_t index)
 	}  
     endSPITransaction();
     return r;  // get the received byte... should check for it first...
+#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x 
+    uint16_t wTimeout = 0xffff;
+    uint8_t r=0;
+
+    beginSPITransaction(ILI9341_SPICLOCK_READ);
+    // Lets assume that queues are empty as we just started transaction.
+	_pimxrt_spi->CR = LPSPI_CR_MEN | LPSPI_CR_RRF | LPSPI_CR_RTF;   // actually clear both...
+    //writecommand(0xD9); // sekret command
+    maybeUpdateTCR(LPSPI_TCR_PCS(0) | LPSPI_TCR_FRAMESZ(7) | LPSPI_TCR_CONT);
+	_pimxrt_spi->TDR = 0xD9;
+
+    // writedata(0x10 + index);
+	maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(7) | LPSPI_TCR_CONT);
+	_pimxrt_spi->TDR = 0x10 + index;
+
+    // writecommand(c);
+    maybeUpdateTCR(LPSPI_TCR_PCS(0) | LPSPI_TCR_FRAMESZ(7) | LPSPI_TCR_CONT);
+	_pimxrt_spi->TDR = c;
+
+    // readdata
+	maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(7));
+	_pimxrt_spi->TDR = 0;
+
+    // Now wait until completed.
+    wTimeout = 0xffff;
+    uint8_t rx_count = 4;
+    while (rx_count && wTimeout) {
+        if ((_pimxrt_spi->RSR & LPSPI_RSR_RXEMPTY) == 0)  {
+            r =_pimxrt_spi->RDR;  // Read any pending RX bytes in
+            rx_count--; //decrement count of bytes still levt
+        }
+    }
+    endSPITransaction();
+    return r;  // get the received byte... should check for it first...
 #else
 	beginSPITransaction();
 	writecommand_cont(0xD9);
@@ -1208,7 +1393,7 @@ uint16_t ILI9341_t3n::readPixel(int16_t x, int16_t y)
 	return color565(r,g,b);
 #else
 	// Kinetisk
-	uint16_t colors;
+	uint16_t colors = 0;
 	readRect(x, y, 1, 1, &colors);
 	return colors;
 #endif	
@@ -1290,6 +1475,74 @@ void ILI9341_t3n::readRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 	endSPITransaction();
 
 }
+#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x 
+void ILI9341_t3n::readRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t *pcolors)
+{
+	// Use our Origin. 
+	x+=_originx;
+	y+=_originy;
+	//BUGBUG:: Should add some validation of X and Y
+
+	#ifdef ENABLE_ILI9341_FRAMEBUFFER
+	if (_use_fbtft) {
+		uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
+		for (;h>0; h--) {
+			uint16_t * pfbPixel = pfbPixel_row;
+			for (int i = 0 ;i < w; i++) {
+				*pcolors++ = *pfbPixel++;
+			}
+			pfbPixel_row += _width;
+		}
+		return;	
+	}
+	#endif	
+
+   if (_miso == 0xff) return;		// bail if not valid miso
+
+	uint8_t rgb[3];               // RGB bytes received from the display
+	uint8_t rgbIdx = 0;
+	uint32_t txCount = w * h * 3; // number of bytes we will transmit to the display
+	uint32_t rxCount = txCount;   // number of bytes we will receive back from the display
+
+	beginSPITransaction(ILI9341_SPICLOCK_READ);
+
+	setAddr(x, y, x+w-1, y+h-1);
+	writecommand_cont(ILI9341_RAMRD); // read from RAM
+
+
+	// transmit a DUMMY byte before the color bytes
+	writedata8_last(0);		// BUGBUG:: maybe fix this as this will wait until the byte fully transfers through.
+
+	while (txCount || rxCount) {
+		// transmit another byte if possible
+		if (txCount && (_pimxrt_spi->SR & LPSPI_SR_TDF)) {
+			txCount--;
+			if (txCount) {
+				_pimxrt_spi->TDR = 0;
+			} else {
+				maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(7)); // remove the CONTINUE...
+				while ((_pimxrt_spi->SR & LPSPI_SR_TDF) == 0) ;		// wait if queue was full
+				_pimxrt_spi->TDR = 0;
+			}
+		}
+
+		// receive another byte if possible, and either skip it or store the color
+		if (rxCount && !(_pimxrt_spi->RSR & LPSPI_RSR_RXEMPTY)) {
+			rgb[rgbIdx] = _pimxrt_spi->RDR;
+
+			rxCount--;
+			rgbIdx++;
+			if (rgbIdx == 3) {
+				rgbIdx = 0;
+				*pcolors++ = color565(rgb[0], rgb[1], rgb[2]);
+			}
+		}
+	}
+
+	// We should have received everything so should be done
+	endSPITransaction();
+}
+
 #else
 
 // Teensy LC version
@@ -1675,6 +1928,8 @@ void ILI9341_t3n::begin(void)
 				_pspin = &SPIN1;
 #ifdef KINETISK
 				_pkinetisk_spi = &_pspin->port();
+#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x 
+				_pimxrt_spi = &_pspin->port();
 #else
 				_pkinetisl_spi = &_pspin->port();
 #endif				
@@ -1744,6 +1999,27 @@ void ILI9341_t3n::begin(void)
 			return;
 		}
 	}
+#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x 
+	_csport = portOutputRegister(_cs);
+	_cspinmask = digitalPinToBitMask(_cs);
+	pinMode(_cs, OUTPUT);	
+	DIRECT_WRITE_HIGH(_csport, _cspinmask);
+	_spi_tcr_current = _pimxrt_spi->TCR; // get the current TCR value 
+
+	// TODO:  Need to setup DC to actually work.
+	if (_pspin->pinIsChipSelect(_dc)) {
+	 	_pspin->setCS(_dc);
+	 	_dcport = 0;
+	 	_dcpinmask = 0;
+	} else {
+		Serial.println("ILI9341_t3n: Error not DC is not valid hardware CS pin");
+		_dcport = portOutputRegister(_dc);
+		_dcpinmask = digitalPinToBitMask(_dc);
+		pinMode(_dc, OUTPUT);	
+		DIRECT_WRITE_HIGH(_dcport, _dcpinmask);
+	}
+	maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(7));
+
 #else
 	// TLC
 	pcs_data = 0;

@@ -29,7 +29,12 @@
 //#define SPI1_SDCARD
 //#define SPI2_DISP
 
-#ifdef SPI0_DISP1
+#if defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x 
+#define TFT_DC  10  // only CS pin 
+#define TFT_CS 9    // using standard pin
+#define TFT_RST 8
+ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, TFT_RST);
+#elif defined(SPI0_DISP1)
 // For the Adafruit shield, these are the default.
 #define TFT_DC  9
 #define TFT_CS 10
