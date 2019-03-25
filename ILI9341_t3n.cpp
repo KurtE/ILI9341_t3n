@@ -2007,10 +2007,16 @@ void ILI9341_t3n::begin(void)
 	// TODO:  Need to setup DC to actually work.
 	if (_pspin->pinIsChipSelect(_dc)) {
 	 	_pspin->setCS(_dc);
-		maybeUpdateTCR(LPSPI_TCR_PCS(3) | LPSPI_TCR_FRAMESZ(7));
+	 	_dcport = 0;
+	 	_dcpinmask = 0;
 	} else {
 		Serial.println("ILI9341_t3n: Error not DC is not valid hardware CS pin");
+		_dcport = portOutputRegister(_dc);
+		_dcpinmask = digitalPinToBitMask(_dc);
+		pinMode(_dc, OUTPUT);	
+		DIRECT_WRITE_HIGH(_dcport, _dcpinmask);
 	}
+	maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(7));
 
 #else
 	// TLC

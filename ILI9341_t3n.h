@@ -416,6 +416,8 @@ class ILI9341_t3n : public Print
     uint32_t _cspinmask;
     volatile uint32_t *_csport;
     uint32_t _spi_tcr_current;
+    uint32_t _dcpinmask;
+    volatile uint32_t *_dcport;
 #else
     uint8_t _cspinmask;
     volatile uint8_t *_csport;
@@ -526,16 +528,26 @@ class ILI9341_t3n : public Print
 	#define TCR_MASK  (LPSPI_TCR_PCS(3) | LPSPI_TCR_FRAMESZ(31) | LPSPI_TCR_CONT | LPSPI_TCR_RXMSK )
 	void maybeUpdateTCR(uint32_t requested_tcr_state) /*__attribute__((always_inline)) */ {
 		if ((_spi_tcr_current & TCR_MASK) != requested_tcr_state) {
+			bool dc_state_change = (_spi_tcr_current & LPSPI_TCR_PCS(3)) != (requested_tcr_state & LPSPI_TCR_PCS(3));
 			_spi_tcr_current = (_spi_tcr_current & ~TCR_MASK) | requested_tcr_state ;
 			// only output when Transfer queue is empty.
-			while ((_pimxrt_spi->FSR & 0x1f) )	;
-			_pimxrt_spi->TCR = _spi_tcr_current;	// update the 
+			if (!dc_state_change || !_dcpinmask) {
+				while ((_pimxrt_spi->FSR & 0x1f) )	;
+				_pimxrt_spi->TCR = _spi_tcr_current;	// update the TCR
+
+			} else {
+				_pspin->waitTransmitComplete();
+				if (requested_tcr_state & LPSPI_TCR_PCS(3)) DIRECT_WRITE_HIGH(_dcport, _dcpinmask);
+				else DIRECT_WRITE_LOW(_dcport, _dcpinmask);
+				_pimxrt_spi->TCR = _spi_tcr_current & ~(LPSPI_TCR_PCS(3) | LPSPI_TCR_CONT);	// go ahead and update TCR anyway?  
+
+			}
 		}
 	}
 
 	// BUGBUG:: currently assumming we only have CS_0 as valid CS
 	void writecommand_cont(uint8_t c) __attribute__((always_inline)) {
-		maybeUpdateTCR(LPSPI_TCR_PCS(0) | LPSPI_TCR_FRAMESZ(7) | LPSPI_TCR_CONT);
+		maybeUpdateTCR(LPSPI_TCR_PCS(0) | LPSPI_TCR_FRAMESZ(7) /*| LPSPI_TCR_CONT*/);
 		_pimxrt_spi->TDR = c;
 		_pspin->pending_rx_count++;	//
 		_pspin->waitFifoNotFull();
