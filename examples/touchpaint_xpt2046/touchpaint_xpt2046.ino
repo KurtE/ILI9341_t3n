@@ -31,8 +31,20 @@
 #define TS_MINY 529
 #define TS_MAXX 3729
 #define TS_MAXY 3711
+#if defined(__IMXRT1052__) || defined(__IMXRT1062__)
+// On Teensy 4 beta with Paul's breakout out: 
+// Using pins (MOSI, MISO, SCK which are labeled on Audio board breakout location 
+// which are not in the Normal processor positions
+// Also DC=10(CS), CS=9(MEMCS) and RST 23(MCLK) TOUCH_CS=21(BCLK)
+#define TFT_RST 23
+#define TFT_DC 10
+#define TFT_CS 9
+#define TFT_SCK 13
+#define TFT_MISO 12
+#define TFT_MOSI 11
+#define TOUCH_CS 21
 
-#ifdef KURTS_FLEXI
+#elif defined(KURTS_FLEXI)
 #define TFT_DC 22
 #define TFT_CS 15
 #define TFT_RST -1
@@ -40,6 +52,7 @@
 #define TFT_MISO 12
 #define TFT_MOSI 7
 #define DEBUG_PIN 13
+#define TOUCH_CS  8
 #else
 #define TFT_DC  9
 #define TFT_CS 10
@@ -47,9 +60,9 @@
 #define TFT_SCK 13
 #define TFT_MISO 12
 #define TFT_MOSI 11
+#define TOUCH_CS  8
 #endif
 
-#define TOUCH_CS  8
 
 XPT2046_Touchscreen ts(TOUCH_CS);
 ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, TFT_RST, TFT_MOSI, TFT_SCK, TFT_MISO);
@@ -171,4 +184,3 @@ void loop()
     tft.fillCircle(p.x, p.y, PENRADIUS, currentcolor);
   }
 }
-
