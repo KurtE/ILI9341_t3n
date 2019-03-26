@@ -3138,12 +3138,12 @@ int16_t ILI9341_t3n::strPixelLen(char * str)
 
 				len += delta;//+width-xoffset;
 //				//Serial.printf("  len =  %d\n", len);
-				if ( len > maxlen )
-				{
-					maxlen=len;
+			}
+
+			if ( len > maxlen )
+			{
+				maxlen=len;
 //					//Serial.printf("  maxlen =  %d\n", maxlen);
-				}
-			
 			}
 		}
 		str++;
