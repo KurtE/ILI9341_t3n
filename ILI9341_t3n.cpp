@@ -3257,6 +3257,188 @@ void ILI9341_t3n::sleep(bool enable) {
 	}
 }
 
+
+
+/***************************************************************************************
+** Function name:           setTextDatum
+** Description:             Set the text position reference datum
+***************************************************************************************/
+void ILI9341_t3n::setTextDatum(uint8_t d)
+{
+  textdatum = d;
+}
+
+
+/***************************************************************************************
+** Function name:           drawNumber
+** Description:             draw a long integer
+***************************************************************************************/
+int16_t ILI9341_t3n::drawNumber(long long_num, int poX, int poY)
+{
+  char str[14];
+  ltoa(long_num, str, 10);
+  return drawString(str, poX, poY);
+}
+
+
+int16_t ILI9341_t3n::drawFloat(float floatNumber, int dp, int poX, int poY)
+{
+  char str[14];               // Array to contain decimal string
+  uint8_t ptr = 0;            // Initialise pointer for array
+  int8_t  digits = 1;         // Count the digits to avoid array overflow
+  float rounding = 0.5;       // Round up down delta
+
+  if (dp > 7) dp = 7; // Limit the size of decimal portion
+
+  // Adjust the rounding value
+  for (uint8_t i = 0; i < dp; ++i) rounding /= 10.0;
+
+  if (floatNumber < -rounding)    // add sign, avoid adding - sign to 0.0!
+  {
+    str[ptr++] = '-'; // Negative number
+    str[ptr] = 0; // Put a null in the array as a precaution
+    digits = 0;   // Set digits to 0 to compensate so pointer value can be used later
+    floatNumber = -floatNumber; // Make positive
+  }
+
+  floatNumber += rounding; // Round up or down
+
+  // For error put ... in string and return (all TFT_ILI9341_ESP library fonts contain . character)
+  if (floatNumber >= 2147483647) {
+    strcpy(str, "...");
+    //return drawString(str, poX, poY);
+  }
+  // No chance of overflow from here on
+
+  // Get integer part
+  unsigned long temp = (unsigned long)floatNumber;
+
+  // Put integer part into array
+  ltoa(temp, str + ptr, 10);
+
+  // Find out where the null is to get the digit count loaded
+  while ((uint8_t)str[ptr] != 0) ptr++; // Move the pointer along
+  digits += ptr;                  // Count the digits
+
+  str[ptr++] = '.'; // Add decimal point
+  str[ptr] = '0';   // Add a dummy zero
+  str[ptr + 1] = 0; // Add a null but don't increment pointer so it can be overwritten
+
+  // Get the decimal portion
+  floatNumber = floatNumber - temp;
+
+  // Get decimal digits one by one and put in array
+  // Limit digit count so we don't get a false sense of resolution
+  uint8_t i = 0;
+  while ((i < dp) && (digits < 9)) // while (i < dp) for no limit but array size must be increased
+  {
+    i++;
+    floatNumber *= 10;       // for the next decimal
+    temp = floatNumber;      // get the decimal
+    ltoa(temp, str + ptr, 10);
+    ptr++; digits++;         // Increment pointer and digits count
+    floatNumber -= temp;     // Remove that digit
+  }
+
+  // Finally we can plot the string and return pixel length
+  return drawString(str, poX, poY);
+}
+
+/***************************************************************************************
+** Function name:           drawString (with or without user defined font)
+** Description :            draw string with padding if it is defined
+***************************************************************************************/
+// Without font number, uses font set by setTextFont()
+int16_t ILI9341_t3n::drawString(const String& string, int poX, int poY)
+{
+  int16_t len = string.length() + 2;
+  char buffer[len];
+  string.toCharArray(buffer, len);
+  return drawString1(buffer, len, poX, poY);
+}
+
+int16_t ILI9341_t3n::drawString1(char string[], int16_t len, int poX, int poY)
+{
+  int16_t sumX = 0;
+  uint8_t padding = 1, baseline = 0;
+  
+  uint16_t cwidth = strPixelLen(string); // Find the pixel width of the string in the font
+  uint16_t cheight = textsize*8;
+
+  
+  if (textdatum || padX)
+  {
+    switch(textdatum) {
+      case TC_DATUM:
+        poX -= cwidth/2;
+        padding += 1;
+        break;
+      case TR_DATUM:
+        poX -= cwidth;
+        padding += 2;
+        break;
+      case ML_DATUM:
+        poY -= cheight/2;
+        //padding += 0;
+        break;
+      case MC_DATUM:
+        poX -= cwidth/2;
+        poY -= cheight/2;
+        padding += 1;
+        break;
+      case MR_DATUM:
+        poX -= cwidth;
+        poY -= cheight/2;
+        padding += 2;
+        break;
+      case BL_DATUM:
+        poY -= cheight;
+        //padding += 0;
+        break;
+      case BC_DATUM:
+        poX -= cwidth/2;
+        poY -= cheight;
+        padding += 1;
+        break;
+      case BR_DATUM:
+        poX -= cwidth;
+        poY -= cheight;
+        padding += 2;
+        break;
+	 /*
+      case L_BASELINE:
+        poY -= baseline;
+        //padding += 0;
+        break;
+      case C_BASELINE:
+        poX -= cwidth/2;
+        poY -= baseline;
+        //padding += 1;
+        break;
+      case R_BASELINE:
+        poX -= cwidth;
+        poY -= baseline;
+        padding += 2;
+        break;
+	*/
+    }
+    // Check coordinates are OK, adjust if not
+    if (poX < 0) poX = 0;
+    if (poX+cwidth > width())   poX = width() - cwidth;
+    if (poY < 0) poY = 0;
+    //if (poY+cheight-baseline >_height) poY = _height - cheight;
+  }
+
+  for(uint8_t i = 0; i < len-2; i++){
+    drawChar((int16_t) (poX+sumX), (int16_t) poY, string[i], textcolor, textbgcolor, textsize);
+    //sumX += (len*textsize);
+	sumX += cwidth/(len-2) + padding;
+  }
+
+return sumX;
+}
+
+
 void Adafruit_GFX_Button::initButton(ILI9341_t3n *gfx,
 	int16_t x, int16_t y, uint8_t w, uint8_t h,
 	uint16_t outline, uint16_t fill, uint16_t textcolor,
