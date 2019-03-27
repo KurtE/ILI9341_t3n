@@ -13,20 +13,11 @@ MR_DATUM = Middle right
 BL_DATUM = Bottom left
 BC_DATUM = Bottom centre
 BR_DATUM = Bottom right
-
- 
- Needs fonts 2, 4, 6, 7 and 8
-
-
- #########################################################################
- ###### DON'T FORGET TO UPDATE THE User_Setup.h FILE IN THE LIBRARY ######
- ######       TO SELECT THE FONTS AND PINS YOU USE, SEE ABOVE       ######
- #########################################################################
- */
-
+*/
 
 #include <ILI9341_t3n.h> // Hardware-specific library
 #include <SPI.h>
+#include <ili9341_t3n_font_Arial.h>
 
 #define ILI9341_RST 23
 #define ILI9341_DC 9
@@ -39,7 +30,8 @@ void setup(void) {
   Serial.begin(115200);
   tft.begin();
   tft.setRotation(3);
-  tft.setTextSize(3);
+  tft.setFont(Arial_18);
+  //tft.setTextSize(4);
 }
 
 void loop() {

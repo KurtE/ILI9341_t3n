@@ -3428,13 +3428,18 @@ int16_t ILI9341_t3n::drawString1(char string[], int16_t len, int poX, int poY)
     if (poY < 0) poY = 0;
     //if (poY+cheight-baseline >_height) poY = _height - cheight;
   }
-
-  for(uint8_t i = 0; i < len-2; i++){
-    drawChar((int16_t) (poX+sumX), (int16_t) poY, string[i], textcolor, textbgcolor, textsize);
-    //sumX += (len*textsize);
-	sumX += cwidth/(len-2) + padding;
+  if(font == NULL){
+	  for(uint8_t i = 0; i < len-2; i++){
+		drawChar((int16_t) (poX+sumX), (int16_t) poY, string[i], textcolor, textbgcolor, textsize);
+		sumX += cwidth/(len-2) + padding;
+	  }
+  } else {
+	  setCursor(poX, poY);
+	  for(uint8_t i = 0; i < len-2; i++){
+		drawFontChar(string[i]);
+		setCursor(cursor_x, cursor_y);
+	  }
   }
-
 return sumX;
 }
 
