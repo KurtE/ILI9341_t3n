@@ -191,6 +191,24 @@ typedef struct {
 #define ILI9341_DMA_CONT	0x02 	// continuous mode
 #define ILI9341_DMA_ACTIVE  0x80    // Is currently active
 
+//These enumerate the text plotting alignment (reference datum point)
+#define TL_DATUM 0 // Top left (default)
+#define TC_DATUM 1 // Top centre
+#define TR_DATUM 2 // Top right
+#define ML_DATUM 3 // Middle left
+#define CL_DATUM 3 // Centre left, same as above
+#define MC_DATUM 4 // Middle centre
+#define CC_DATUM 4 // Centre centre, same as above
+#define MR_DATUM 5 // Middle right
+#define CR_DATUM 5 // Centre right, same as above
+#define BL_DATUM 6 // Bottom left
+#define BC_DATUM 7 // Bottom centre
+#define BR_DATUM 8 // Bottom right
+//#define L_BASELINE  9 // Left character baseline (Line the 'A' character would sit on)
+//#define C_BASELINE 10 // Centre character baseline
+//#define R_BASELINE 11 // Right character baseline
+
+
 #ifdef __cplusplus
 // At all other speeds, ILI9241_KINETISK__pspi->beginTransaction() will use the fastest available clock
 #ifdef KINETISK
@@ -348,6 +366,17 @@ class ILI9341_t3n : public Print
 	void setFontAdafruit(void) { font = NULL; }
 	void drawFontChar(unsigned int c);
 	int16_t strPixelLen(char * str);
+	
+	// added support for drawing strings/numbers/floats with centering
+	// modified from tft_ili9341_ESP github library
+	// Handle numbers
+	int16_t  drawNumber(long long_num,int poX, int poY);
+	int16_t  drawFloat(float floatNumber,int decimal,int poX, int poY);   
+	// Handle char arrays
+	int16_t drawString(const String& string, int poX, int poY);
+	int16_t drawString1(char string[], int16_t len, int poX, int poY);
+
+	void setTextDatum(uint8_t datum);
 
 	// added support to use optional Frame buffer
 	void	setFrameBuffer(uint16_t *frame_buffer);
@@ -404,9 +433,11 @@ class ILI9341_t3n : public Print
 	}
 
 	uint16_t textcolor, textbgcolor;
-	uint8_t textsize, rotation;
+	uint8_t textsize, rotation, textdatum;
 	boolean wrap; // If set, 'wrap' text at right edge of display
 	const ILI9341_t3_font_t *font;
+	
+	uint32_t padX;
 
   	uint8_t  _rst;
   	uint8_t _cs, _dc;
