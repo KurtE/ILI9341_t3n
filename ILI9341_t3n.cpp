@@ -2012,7 +2012,7 @@ void ILI9341_t3n::begin(void)
 	 	_dcport = 0;
 	 	_dcpinmask = 0;
 	} else {
-		Serial.println("ILI9341_t3n: Error not DC is not valid hardware CS pin");
+		//Serial.println("ILI9341_t3n: Error not DC is not valid hardware CS pin");
 		_dcport = portOutputRegister(_dc);
 		_dcpinmask = digitalPinToBitMask(_dc);
 		pinMode(_dc, OUTPUT);	
