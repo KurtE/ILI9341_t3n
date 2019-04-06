@@ -377,6 +377,18 @@ class ILI9341_t3n : public Print
 	int16_t drawString1(char string[], int16_t len, int poX, int poY);
 
 	void setTextDatum(uint8_t datum);
+	
+	// added support for scrolling text area
+	// https://github.com/vitormhenrique/ILI9341_t3
+	// Discussion regarding this optimized version:
+    //http://forum.pjrc.com/threads/26305-Highly-optimized-ILI9341-%28320x240-TFT-color-display%29-library
+	//	
+	void setScrollTextArea(int16_t x, int16_t y, int16_t w, int16_t h);
+	void setScrollBackgroundColor(uint16_t color);
+	void enableScroll(void);
+	void disableScroll(void);
+	void scrollTextArea(uint8_t scrollSize);
+	void resetScrollBackgroundColor(uint16_t color);
 
 	// added support to use optional Frame buffer
 	void	setFrameBuffer(uint16_t *frame_buffer);
@@ -431,8 +443,11 @@ class ILI9341_t3n : public Print
 
 		}
 	}
+	
+	int16_t scroll_x, scroll_y, scroll_width, scroll_height;
+	boolean scrollEnable,isWritingScrollArea; // If set, 'wrap' text at right edge of display
 
-	uint16_t textcolor, textbgcolor;
+	uint16_t textcolor, textbgcolor,scrollbgcolor;
 	uint8_t textsize, rotation, textdatum;
 	boolean wrap; // If set, 'wrap' text at right edge of display
 	const ILI9341_t3_font_t *font;

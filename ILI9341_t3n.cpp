@@ -2472,21 +2472,38 @@ size_t ILI9341_t3n::write(uint8_t c)
 {
 	if (font) {
 		if (c == '\n') {
-			cursor_y += font->line_space; // Fix linefeed. Added by T.T., SoftEgg
-			cursor_x = 0;
+			cursor_y += font->line_space;
+			if(scrollEnable && isWritingScrollArea){
+				cursor_x  = scroll_x;
+			}else{
+				cursor_x  = 0;
+			}
 		} else {
 			drawFontChar(c);
 		}
 	} else {
 		if (c == '\n') {
 			cursor_y += textsize*8;
-			cursor_x  = 0;
+			if(scrollEnable && isWritingScrollArea){
+				cursor_x  = scroll_x;
+			}else{
+				cursor_x  = 0;
+			}
 		} else if (c == '\r') {
 			// skip em
 		} else {
+			if(scrollEnable && isWritingScrollArea && (cursor_y > (scroll_y+scroll_height - textsize*8))){
+				scrollTextArea(textsize*8);
+				cursor_y -= textsize*8;
+				cursor_x = scroll_x;
+			}
 			drawChar(cursor_x, cursor_y, c, textcolor, textbgcolor, textsize);
 			cursor_x += textsize*6;
-			if (wrap && (cursor_x > (_width - textsize*6))) {
+			if(wrap && scrollEnable && isWritingScrollArea && (cursor_x > (scroll_x+scroll_width - textsize*6))){
+				cursor_y += textsize*8;
+				cursor_x = scroll_x;
+			}
+			else if (wrap && (cursor_x > (_width - textsize*6))) {
 				cursor_y += textsize*8;
 				cursor_x = 0;
 			}
@@ -2791,6 +2808,21 @@ void ILI9341_t3n::drawFontChar(unsigned int c)
 		}
 		cursor_y += font->line_space;
 	}
+	if(wrap && scrollEnable && isWritingScrollArea && ((origin_x + (int)width) > (scroll_x+scroll_width))){
+    	origin_x = 0;
+		if (xoffset >= 0) {
+			cursor_x = scroll_x;
+		} else {
+			cursor_x = -xoffset;
+		}
+		cursor_y += font->line_space;
+    }
+	
+	if(scrollEnable && isWritingScrollArea && (cursor_y > (scroll_y+scroll_height - font->cap_height))){
+		scrollTextArea(font->line_space);
+		cursor_y -= font->line_space;
+		cursor_x = scroll_x;
+	} 
 	if (cursor_y >= _height) return;
 
 	// vertically, the top and/or bottom can be clipped
@@ -3205,7 +3237,14 @@ void ILI9341_t3n::setCursor(int16_t x, int16_t y) {
 	if (y < 0) y = 0;
 	else if (y >= _height) y = _height - 1;
 	cursor_y = y;
+	
+	if(x>=scroll_x && x<=(scroll_x+scroll_width) && y>=scroll_y && y<=(scroll_y+scroll_height)){
+		isWritingScrollArea	= true;
+	} else {
+		isWritingScrollArea = false;
+	}
 }
+
 void ILI9341_t3n::getCursor(int16_t *x, int16_t *y) {
   *x = cursor_x;
   *y = cursor_y;
@@ -3443,6 +3482,39 @@ int16_t ILI9341_t3n::drawString1(char string[], int16_t len, int poX, int poY)
 return sumX;
 }
 
+
+void ILI9341_t3n::scrollTextArea(uint8_t scrollSize){
+	uint16_t awColors[scroll_width];
+	for (int y=scroll_y+scrollSize; y < (scroll_y+scroll_height); y++) { 
+		readRect(scroll_x, y, scroll_width, 1, awColors); 
+		writeRect(scroll_x, y-scrollSize, scroll_width, 1, awColors);  
+	}
+	fillRect(scroll_x, (scroll_y+scroll_height)-scrollSize, scroll_width, scrollSize, scrollbgcolor);
+}
+
+void ILI9341_t3n::setScrollTextArea(int16_t x, int16_t y, int16_t w, int16_t h){
+	scroll_x = x; 
+	scroll_y = y;
+	scroll_width = w; 
+	scroll_height = h;
+}
+
+void ILI9341_t3n::setScrollBackgroundColor(uint16_t color){
+	scrollbgcolor=color;
+	fillRect(scroll_x,scroll_y,scroll_width,scroll_height,scrollbgcolor);
+}
+
+void ILI9341_t3n::enableScroll(void){
+	scrollEnable = true;
+}
+
+void ILI9341_t3n::disableScroll(void){
+	scrollEnable = false;
+}
+
+void ILI9341_t3n::resetScrollBackgroundColor(uint16_t color){
+	scrollbgcolor=color;
+}	
 
 void Adafruit_GFX_Button::initButton(ILI9341_t3n *gfx,
 	int16_t x, int16_t y, uint8_t w, uint8_t h,
