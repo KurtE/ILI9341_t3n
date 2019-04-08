@@ -2403,7 +2403,7 @@ void ILI9341_t3n::fillTriangle ( int16_t x0, int16_t y0,
     return;
   }
 
-  int16_t
+  int32_t
     dx01 = x1 - x0,
     dy01 = y1 - y0,
     dx02 = x2 - x0,
