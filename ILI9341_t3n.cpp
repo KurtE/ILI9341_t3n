@@ -3399,7 +3399,7 @@ int16_t ILI9341_t3n::drawString(const String& string, int poX, int poY)
 int16_t ILI9341_t3n::drawString1(char string[], int16_t len, int poX, int poY)
 {
   int16_t sumX = 0;
-  uint8_t padding = 1, baseline = 0;
+  uint8_t padding = 1/*, baseline = 0*/;
   
   uint16_t cwidth = strPixelLen(string); // Find the pixel width of the string in the font
   uint16_t cheight = textsize*8;
