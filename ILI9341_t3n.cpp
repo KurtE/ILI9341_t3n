@@ -2712,6 +2712,21 @@ void ILI9341_t3n::drawChar(int16_t x, int16_t y, unsigned char c,
 	}
 }
 
+void ILI9341_t3n::setFont(const ILI9341_t3_font_t &f) {
+	font = &f;
+	fontbpp = 1;
+	// Calculate additional metrics for Anti-Aliased font support (BDF extn v2.3)
+	if (font && font->version==23){
+		fontbpp = (font->reserved & 0b000011)+1;
+		fontbppindex = (fontbpp >> 2)+1;
+		fontbppmask = (1 << (fontbppindex+1))-1;
+		fontppb = 8/fontbpp;
+		fontalphamx = 31/((1<<fontbpp)-1);
+		// Ensure text and bg color are different. Note: use setTextColor to set actual bg color
+		if (textcolor == textbgcolor) textbgcolor = (textcolor==0x0000)?0xFFFF:0x0000;
+	}
+}
+
 static uint32_t fetchbit(const uint8_t *p, uint32_t index)
 {
 	if (p[index >> 3] & (1 << (7 - (index & 7)))) return 1;
@@ -2748,6 +2763,15 @@ static uint32_t fetchbits_signed(const uint8_t *p, uint32_t index, uint32_t requ
 	return (int32_t)val;
 }
 
+uint32_t ILI9341_t3n::fetchpixel(const uint8_t *p, uint32_t index, uint32_t x)
+{
+	// The byte
+	uint8_t b = p[index >> 3];
+	// Shift to LSB position and mask to get value
+	uint8_t s = ((fontppb-(x % fontppb)-1)*fontbpp);
+	// Mask and return
+	return (b >> s) & fontbppmask;
+}
 
 void ILI9341_t3n::drawFontChar(unsigned int c)
 {
@@ -2835,36 +2859,69 @@ void ILI9341_t3n::drawFontChar(unsigned int c)
 	int32_t y = origin_y;
 	bool opaque = (textbgcolor != textcolor);
 
-
 	// Going to try a fast Opaque method which works similar to drawChar, which is near the speed of writerect
 	if (!opaque) {
-		while (linecount > 0) {
-			//Serial.printf("    linecount = %d\n", linecount);
-			uint32_t n = 1;
-			if (fetchbit(data, bitoffset++) != 0) {
-				n = fetchbits_unsigned(data, bitoffset, 3) + 2;
-				bitoffset += 3;
+
+		// Anti-alias support
+		if (fontbpp>1){
+			// This branch should, in most cases, never happen. This is because if an
+			// anti-aliased font is being used, textcolor and textbgcolor should always
+			// be different. Even though an anti-alised font is being used, pixels in this
+			// case will all be solid because pixels are rendered on same colour as themselves!
+			// This won't look very good.
+			bitoffset = ((bitoffset + 7) & (-8)); // byte-boundary
+			uint32_t xp = 0;
+			uint8_t halfalpha = 1<<(fontbpp-1);
+			while (linecount) {
+				uint32_t x = 0;
+				while(x<width) {
+					// One pixel at a time, either on (if alpha > 0.5) or off
+					if (fetchpixel(data, bitoffset, xp)>=halfalpha){
+						Pixel(origin_x + x,y,textcolor);
+					}
+					bitoffset += fontbpp;
+					x++;
+					xp++;
+				}
+				y++;
+				linecount--;
 			}
-			uint32_t x = 0;
-			do {
-				int32_t xsize = width - x;
-				if (xsize > 32) xsize = 32;
-				uint32_t bits = fetchbits_unsigned(data, bitoffset, xsize);
-				//Serial.printf("    multi line %d %d %x\n", n, x, bits);
-				drawFontBits(opaque, bits, xsize, origin_x + x, y, n);
-				bitoffset += xsize;
-				x += xsize;
-			} while (x < width);
 
-
-			y += n;
-			linecount -= n;
-			//if (++loopcount > 100) {
-				//Serial.println("     abort draw loop");
-				//break;
-			//}
 		}
-	} else {
+		// Soild pixels
+		else{
+
+			while (linecount > 0) {
+				//Serial.printf("    linecount = %d\n", linecount);
+				uint32_t n = 1;
+				if (fetchbit(data, bitoffset++) != 0) {
+					n = fetchbits_unsigned(data, bitoffset, 3) + 2;
+					bitoffset += 3;
+				}
+				uint32_t x = 0;
+				do {
+					int32_t xsize = width - x;
+					if (xsize > 32) xsize = 32;
+					uint32_t bits = fetchbits_unsigned(data, bitoffset, xsize);
+					//Serial.printf("    multi line %d %d %x\n", n, x, bits);
+					drawFontBits(opaque, bits, xsize, origin_x + x, y, n);
+					bitoffset += xsize;
+					x += xsize;
+				} while (x < width);
+
+
+				y += n;
+				linecount -= n;
+				//if (++loopcount > 100) {
+					//Serial.println("     abort draw loop");
+					//break;
+				//}
+			}
+		} // 1bpp
+	}
+
+	// opaque
+	else {
 		// Now opaque mode... 
 		// Now write out background color for the number of rows above the above the character
 		// figure out bounding rectangle... 
@@ -2874,8 +2931,6 @@ void ILI9341_t3n::drawFontChar(unsigned int c)
 		int cursor_y_origin = cursor_y + _originy;
 		origin_x += _originx;
 		origin_y += _originy;
-
-
 
 		int start_x = (origin_x < cursor_x_origin) ? origin_x : cursor_x_origin; 	
 		if (start_x < 0) start_x = 0;
@@ -2919,6 +2974,7 @@ void ILI9341_t3n::drawFontChar(unsigned int c)
 			int screen_y = start_y;
 			int screen_x;
 
+			// Clear above character
 			while (screen_y < origin_y) {
 				pfbPixel = pfbPixel_row;
 				// only output if this line is within the clipping region.
@@ -2934,67 +2990,109 @@ void ILI9341_t3n::drawFontChar(unsigned int c)
 				pfbPixel_row += _width;
 			}
 
-			// Now lets process each of the data lines. 
-			screen_y = origin_y;
-
-			while (linecount > 0) {
-				//Serial.printf("    linecount = %d\n", linecount);
-				uint32_t b = fetchbit(data, bitoffset++);
-				uint32_t n;
-				if (b == 0) {
-					//Serial.println("Single");
-					n = 1;
-				} else {
-					//Serial.println("Multi");
-					n = fetchbits_unsigned(data, bitoffset, 3) + 2;
-					bitoffset += 3;
-				}
-				uint32_t bitoffset_row_start = bitoffset;
-				while (n--) {
+			// Anti-aliased font
+			if (fontbpp>1){
+				screen_y = origin_y;
+				bitoffset = ((bitoffset + 7) & (-8)); // byte-boundary
+				uint32_t xp = 0;
+				uint32_t glyphend_x = origin_x+width;
+				while (linecount) {
 					pfbPixel = pfbPixel_row;
-					if ((screen_y >= _displayclipy1) && (screen_y < _displayclipy2)) {
-						bitoffset = bitoffset_row_start;	// we will work through these bits maybe multiple times
-
-						for (screen_x = start_x; screen_x < origin_x; screen_x++) {
-							if (screen_x >= _displayclipx1) {
+					uint32_t screen_x = start_x;
+					while(screen_x<=end_x) {
+						// XXX: I'm sure clipping could be done way more efficiently than just chekcing every single pixel, but let's just get this going
+						if ((screen_x >= _displayclipx1) && (screen_x < _displayclipx2) && (screen_y >= _displayclipy1) && (screen_y < _displayclipy2)) {
+							// Clear before or after pixel
+							if ((screen_x<origin_x) || (screen_x>=glyphend_x)){
 								*pfbPixel = textbgcolor;
-							} // make sure not clipped
-							pfbPixel++;
-						}
-					}
-
-					screen_x = origin_x;
-					uint32_t x = 0;
-					do {
-						uint32_t xsize = width - x;
-						if (xsize > 32) xsize = 32;
-						uint32_t bits = fetchbits_unsigned(data, bitoffset, xsize);
-						uint32_t bit_mask = 1 << (xsize-1);
-						//Serial.printf(" %d %d %x %x\n", x, xsize, bits, bit_mask);
-						if ((screen_y >= _displayclipy1) && (screen_y < _displayclipy2)) {
-							while (bit_mask && (screen_x <= end_x)) {
-								if ((screen_x >= _displayclipx1) && (screen_x < _displayclipx2)) {
-									*pfbPixel = (bits & bit_mask) ? textcolor : textbgcolor;
-								}
-								pfbPixel++;	
-								bit_mask = bit_mask >> 1;
-								screen_x++;	// increment our pixel position. 
 							}
-						}
-							bitoffset += xsize;
-						x += xsize;
-					} while (x < width);
-					if ((screen_y >= _displayclipy1) && (screen_y < _displayclipy2)) {
-						// output bg color and right hand side
-						while (screen_x++ <= end_x) {
-							*pfbPixel++ = textbgcolor;
-						}
-					}			 
-		 			screen_y++;
+							// Draw alpha-blended character
+							else{
+								uint8_t alpha = fetchpixel(data, bitoffset, xp);
+								*pfbPixel = alphaBlendRGB565Premultiplied( textcolorPrexpanded, textbgcolorPrexpanded, (uint8_t)(alpha * fontalphamx) );
+								bitoffset += fontbpp;
+								xp++;
+							}
+						} // clip
+						screen_x++;
+						pfbPixel++;
+					}
 					pfbPixel_row += _width;
+					screen_y++;
 					linecount--;
 				}
-			}
+
+			} // anti-aliased
+
+			// 1bpp solid font
+			else{
+
+				// Now lets process each of the data lines (draw character)
+				screen_y = origin_y;
+				while (linecount > 0) {
+					//Serial.printf("    linecount = %d\n", linecount);
+					uint32_t b = fetchbit(data, bitoffset++);
+					uint32_t n;
+					if (b == 0) {
+						//Serial.println("Single");
+						n = 1;
+					} else {
+						//Serial.println("Multi");
+						n = fetchbits_unsigned(data, bitoffset, 3) + 2;
+						bitoffset += 3;
+					}
+					uint32_t bitoffset_row_start = bitoffset;
+					while (n--) {
+						pfbPixel = pfbPixel_row;
+
+						// Clear to left
+						if ((screen_y >= _displayclipy1) && (screen_y < _displayclipy2)) {
+							bitoffset = bitoffset_row_start;	// we will work through these bits maybe multiple times
+							for (screen_x = start_x; screen_x < origin_x; screen_x++) {
+								if (screen_x >= _displayclipx1) {
+									*pfbPixel = textbgcolor;
+								} // make sure not clipped
+								pfbPixel++;
+							}
+						}
+
+						// Pixel bits
+						screen_x = origin_x;
+						uint32_t x = 0;
+						do {
+							uint32_t xsize = width - x;
+							if (xsize > 32) xsize = 32;
+							uint32_t bits = fetchbits_unsigned(data, bitoffset, xsize);
+							uint32_t bit_mask = 1 << (xsize-1);
+							//Serial.printf(" %d %d %x %x\n", x, xsize, bits, bit_mask);
+							if ((screen_y >= _displayclipy1) && (screen_y < _displayclipy2)) {
+								while (bit_mask && (screen_x <= end_x)) {
+									if ((screen_x >= _displayclipx1) && (screen_x < _displayclipx2)) {
+										*pfbPixel = (bits & bit_mask) ? textcolor : textbgcolor;
+									}
+									pfbPixel++;	
+									bit_mask = bit_mask >> 1;
+									screen_x++;	// increment our pixel position. 
+								}
+							}
+								bitoffset += xsize;
+							x += xsize;
+						} while (x < width);
+
+						// Clear to right
+						if ((screen_y >= _displayclipy1) && (screen_y < _displayclipy2)) {
+							// output bg color and right hand side
+							while (screen_x++ <= end_x) {
+								*pfbPixel++ = textbgcolor;
+							}
+						}			 
+			 			screen_y++;
+						pfbPixel_row += _width;
+						linecount--;
+					}
+				}
+
+			} // 1bpp
 
 			// clear below character
 	 		while (screen_y++ <= end_y) {
@@ -3013,13 +3111,16 @@ void ILI9341_t3n::drawFontChar(unsigned int c)
 		} else 
 		#endif
 		{
+
 			beginSPITransaction();
 			//Serial.printf("SetAddr %d %d %d %d\n", start_x_min, start_y_min, end_x, end_y);
 			// output rectangle we are updating... We have already clipped end_x/y, but not yet start_x/y
-			setAddr( start_x_min, start_y_min, end_x, end_y);
+			setAddr( start_x, start_y_min, end_x, end_y);
 			writecommand_cont(ILI9341_RAMWR);
 			int screen_y = start_y_min;
 			int screen_x;
+
+			// Clear above character
 			while (screen_y < origin_y) {
 				for (screen_x = start_x_min; screen_x <= end_x; screen_x++) {
 					writedata16_cont(textbgcolor);
@@ -3027,69 +3128,104 @@ void ILI9341_t3n::drawFontChar(unsigned int c)
 				screen_y++;
 			}
 
-			// Now lets process each of the data lines. 
-			screen_y = origin_y;
-			while (linecount > 0) {
-				//Serial.printf("    linecount = %d\n", linecount);
-				uint32_t b = fetchbit(data, bitoffset++);
-				uint32_t n;
-				if (b == 0) {
-					//Serial.println("    Single");
-					n = 1;
-				} else {
-					//Serial.println("    Multi");
-					n = fetchbits_unsigned(data, bitoffset, 3) + 2;
-					bitoffset += 3;
-				}
-				uint32_t bitoffset_row_start = bitoffset;
-				while (n--) {
-					// do some clipping here. 
-					bitoffset = bitoffset_row_start;	// we will work through these bits maybe multiple times
-					// We need to handle case where some of the bits may not be visible, but we still need to
-					// read through them
-					//Serial.printf("y:%d  %d %d %d %d\n", screen_y, start_x, origin_x, _displayclipx1, _displayclipx2);
-					if ((screen_y >= _displayclipy1) && (screen_y < _displayclipy2)) {
-						for (screen_x = start_x; screen_x < origin_x; screen_x++) {
-							if ((screen_x >= _displayclipx1) && (screen_x < _displayclipx2)) {
-								//Serial.write('-');
+			// Anti-aliased font
+			if (fontbpp>1){
+				screen_y = origin_y;
+				bitoffset = ((bitoffset + 7) & (-8)); // byte-boundary
+				uint32_t glyphend_x = origin_x+width;
+				uint32_t xp = 0;
+				while (linecount) {
+					uint32_t screen_x = start_x;
+					while(screen_x<=end_x) {
+						// XXX: I'm sure clipping could be done way more efficiently than just chekcing every single pixel, but let's just get this going
+						if ((screen_x >= _displayclipx1) && (screen_x < _displayclipx2) && (screen_y >= _displayclipy1) && (screen_y < _displayclipy2)) {
+							// Clear before or after pixel
+							if ((screen_x<origin_x) || (screen_x>=glyphend_x)){
 								writedata16_cont(textbgcolor);
 							}
-						}
-					}	
-					uint32_t x = 0;
-					screen_x = origin_x;
-					do {
-						uint32_t xsize = width - x;
-						if (xsize > 32) xsize = 32;
-						uint32_t bits = fetchbits_unsigned(data, bitoffset, xsize);
-						uint32_t bit_mask = 1 << (xsize-1);
-						//Serial.printf("     %d %d %x %x - ", x, xsize, bits, bit_mask);
-						if ((screen_y >= _displayclipy1) && (screen_y < _displayclipy2)) {
-							while (bit_mask) {
-								if ((screen_x >= _displayclipx1) && (screen_x < _displayclipx2)) {
-									writedata16_cont((bits & bit_mask) ? textcolor : textbgcolor);
-									//Serial.write((bits & bit_mask) ? '*' : '.');
-								}
-								bit_mask = bit_mask >> 1;
-								screen_x++ ; // Current actual screen X
+							// Draw alpha-blended character
+							else{
+								uint8_t alpha = fetchpixel(data, bitoffset, xp);
+								writedata16_cont( alphaBlendRGB565Premultiplied( textcolorPrexpanded, textbgcolorPrexpanded, (uint8_t)(alpha * fontalphamx) ) );
+								bitoffset += fontbpp;
+								xp++;
 							}
-							//Serial.println();
-							bitoffset += xsize;
-						}
-						x += xsize;
-					} while (x < width) ;
-					if ((screen_y >= _displayclipy1) && (screen_y < _displayclipy2)) {
-						// output bg color and right hand side
-						while (screen_x++ <= end_x) {
-							writedata16_cont(textbgcolor);
-							//Serial.write('+');
-						}
-						//Serial.println();
+						} // clip
+						screen_x++;
 					}
-		 			screen_y++;
+					screen_y++;
 					linecount--;
 				}
-			}
+
+			} // anti-aliased
+
+			// 1bpp
+			else{
+
+				// Now lets process each of the data lines. 
+				screen_y = origin_y;
+				while (linecount > 0) {
+					//Serial.printf("    linecount = %d\n", linecount);
+					uint32_t b = fetchbit(data, bitoffset++);
+					uint32_t n;
+					if (b == 0) {
+						//Serial.println("    Single");
+						n = 1;
+					} else {
+						//Serial.println("    Multi");
+						n = fetchbits_unsigned(data, bitoffset, 3) + 2;
+						bitoffset += 3;
+					}
+					uint32_t bitoffset_row_start = bitoffset;
+					while (n--) {
+						// do some clipping here. 
+						bitoffset = bitoffset_row_start;	// we will work through these bits maybe multiple times
+						// We need to handle case where some of the bits may not be visible, but we still need to
+						// read through them
+						//Serial.printf("y:%d  %d %d %d %d\n", screen_y, start_x, origin_x, _displayclipx1, _displayclipx2);
+						if ((screen_y >= _displayclipy1) && (screen_y < _displayclipy2)) {
+							for (screen_x = start_x; screen_x < origin_x; screen_x++) {
+								if ((screen_x >= _displayclipx1) && (screen_x < _displayclipx2)) {
+									//Serial.write('-');
+									writedata16_cont(textbgcolor);
+								}
+							}
+						}	
+						uint32_t x = 0;
+						screen_x = origin_x;
+						do {
+							uint32_t xsize = width - x;
+							if (xsize > 32) xsize = 32;
+							uint32_t bits = fetchbits_unsigned(data, bitoffset, xsize);
+							uint32_t bit_mask = 1 << (xsize-1);
+							//Serial.printf("     %d %d %x %x - ", x, xsize, bits, bit_mask);
+							if ((screen_y >= _displayclipy1) && (screen_y < _displayclipy2)) {
+								while (bit_mask) {
+									if ((screen_x >= _displayclipx1) && (screen_x < _displayclipx2)) {
+										writedata16_cont((bits & bit_mask) ? textcolor : textbgcolor);
+										//Serial.write((bits & bit_mask) ? '*' : '.');
+									}
+									bit_mask = bit_mask >> 1;
+									screen_x++ ; // Current actual screen X
+								}
+								//Serial.println();
+								bitoffset += xsize;
+							}
+							x += xsize;
+						} while (x < width) ;
+						if ((screen_y >= _displayclipy1) && (screen_y < _displayclipy2)) {
+							// output bg color and right hand side
+							while (screen_x++ <= end_x) {
+								writedata16_cont(textbgcolor);
+								//Serial.write('+');
+							}
+							//Serial.println();
+						}
+			 			screen_y++;
+						linecount--;
+					}
+				}
+			} // 1bpp
 
 			// clear below character - note reusing xcreen_x for this
 			screen_x = (end_y + 1 - screen_y) * (end_x + 1 - start_x_min); // How many bytes we need to still output
@@ -3183,6 +3319,15 @@ int16_t ILI9341_t3n::strPixelLen(char * str)
 //	//Serial.printf("Return  maxlen =  %d\n", maxlen);
 	return( maxlen );
 }
+
+void ILI9341_t3n::drawFontPixel( uint8_t alpha, uint32_t x, uint32_t y ){
+	// Adjust alpha based on the number of alpha levels supported by the font (based on bpp)
+	// Note: Implemented look-up table for alpha, but made absolutely no difference in speed (T3.6)
+	alpha = (uint8_t)(alpha * fontalphamx);
+	uint32_t result = ((((textcolorPrexpanded - textbgcolorPrexpanded) * alpha) >> 5) + textbgcolorPrexpanded) & 0b00000111111000001111100000011111;
+	Pixel(x,y,(uint16_t)((result >> 16) | result));
+}
+
 void ILI9341_t3n::drawFontBits(bool opaque, uint32_t bits, uint32_t numbits, int32_t x, int32_t y, uint32_t repeat)
 {
 	if (bits == 0) {
@@ -3267,6 +3412,9 @@ void ILI9341_t3n::setTextColor(uint16_t c) {
 void ILI9341_t3n::setTextColor(uint16_t c, uint16_t b) {
   textcolor   = c;
   textbgcolor = b;
+  // pre-expand colors for fast alpha-blending later
+  textcolorPrexpanded = (textcolor | (textcolor << 16)) & 0b00000111111000001111100000011111;
+  textbgcolorPrexpanded = (textbgcolor | (textbgcolor << 16)) & 0b00000111111000001111100000011111;
 }
 
 void ILI9341_t3n::setTextWrap(boolean w) {
