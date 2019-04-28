@@ -2995,10 +2995,10 @@ void ILI9341_t3n::drawFontChar(unsigned int c)
 				screen_y = origin_y;
 				bitoffset = ((bitoffset + 7) & (-8)); // byte-boundary
 				uint32_t xp = 0;
-				uint32_t glyphend_x = origin_x+width;
+				int glyphend_x = origin_x+width;
 				while (linecount) {
 					pfbPixel = pfbPixel_row;
-					uint32_t screen_x = start_x;
+					screen_x = start_x;
 					while(screen_x<=end_x) {
 						// XXX: I'm sure clipping could be done way more efficiently than just chekcing every single pixel, but let's just get this going
 						if ((screen_x >= _displayclipx1) && (screen_x < _displayclipx2) && (screen_y >= _displayclipy1) && (screen_y < _displayclipy2)) {
@@ -3132,10 +3132,10 @@ void ILI9341_t3n::drawFontChar(unsigned int c)
 			if (fontbpp>1){
 				screen_y = origin_y;
 				bitoffset = ((bitoffset + 7) & (-8)); // byte-boundary
-				uint32_t glyphend_x = origin_x+width;
+				int glyphend_x = origin_x+width;
 				uint32_t xp = 0;
 				while (linecount) {
-					uint32_t screen_x = start_x;
+				 	screen_x = start_x;
 					while(screen_x<=end_x) {
 						// XXX: I'm sure clipping could be done way more efficiently than just chekcing every single pixel, but let's just get this going
 						if ((screen_x >= _displayclipx1) && (screen_x < _displayclipx2) && (screen_y >= _displayclipy1) && (screen_y < _displayclipy2)) {
