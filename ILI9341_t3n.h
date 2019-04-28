@@ -71,8 +71,6 @@
 #endif
 #endif
 
-#define ENABLE_ILI9341_FRAMEBUFFER
-
 // Allow way to override using SPI
 
 #ifdef __cplusplus
@@ -394,7 +392,6 @@ class ILI9341_t3n : public Print
 
 	// added support to use optional Frame buffer
 	void	setFrameBuffer(uint16_t *frame_buffer);
-	uint16_t *getFrameBuffer() {return _pfbtft;}
 	uint8_t useFrameBuffer(boolean b);		// use the frame buffer?  First call will allocate
 	void	freeFrameBuffer(void);			// explicit call to release the buffer
 	void	updateScreen(void);				// call to say update the screen now. 
@@ -403,13 +400,14 @@ class ILI9341_t3n : public Print
 	void	endUpdateAsync();			 // Turn of the continueous mode fla
 	void	dumpDMASettings();
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
+	uint16_t *getFrameBuffer() {return _pfbtft;}
 	uint32_t frameCount() {return _dma_frame_count; }
 	boolean	asyncUpdateActive(void)  {return (_dma_state & ILI9341_DMA_ACTIVE);}
 	void	initDMASettings(void);
 	#else
 	uint32_t frameCount() {return 0; }
+	uint16_t *getFrameBuffer() {return NULL;}
 	boolean	asyncUpdateActive(void)  {return false;}
-	uint32_t frameCount() {return 0; }
 	#endif
  protected:
  	SPINClass *_pspin;
