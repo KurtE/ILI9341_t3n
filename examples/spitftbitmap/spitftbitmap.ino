@@ -14,7 +14,7 @@
  ****************************************************/
 
 
-#include <ili9341_t3n.h> // Hardware-specific library
+#include <ILI9341_t3n.h>
 #include <SPI.h>
 #include <SD.h>
 

@@ -3,7 +3,7 @@
 
 #include <Arduino.h>
 #include <math.h>
-#include "ili9341_t3n.h"
+#include <ILI9341_t3n.h>
 #include "BaseAnimation.h"
 
 

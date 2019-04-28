@@ -2,7 +2,7 @@
 #define TWISTY_TEXT_H__
 
 #include <Arduino.h>
-#include "ili9341_t3n.h"
+#include <ILI9341_t3n.h>
 #include "MathUtil.h"
 #include "TwistyTextFont.h"
 #include "BaseAnimation.h"
