@@ -156,7 +156,9 @@ void ILI9341_t3n::process_dma_interrupt(void) {
 		_dmaActiveDisplay = 0;	// We don't have a display active any more... 
 
  		// Serial4.println("After End transaction");
-
+	} else {
+		// maybe need to flush cache again
+		if ((uint32_t)_pfbtft >= 0x20200000u)  arm_dcache_flush(_pfbtft, CBALLOC);
 	}
 	_dmatx.clearInterrupt();
 
@@ -613,6 +615,9 @@ bool ILI9341_t3n::updateScreenAsync(bool update_cont)					// call to say update 
 #ifdef DEBUG_ASYNC_UPDATE
 	dumpDMASettings();
 #endif
+
+	// Maybe have to flush cache to make DMA work...
+	if ((uint32_t)_pfbtft >= 0x20200000u)  arm_dcache_flush(_pfbtft, CBALLOC);
 
 	beginSPITransaction();
 	// Doing full window. 
