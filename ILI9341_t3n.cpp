@@ -2279,7 +2279,11 @@ void ILI9341_t3n::drawLine(int16_t x0, int16_t y0,
 		ystep = -1;
 	}
 
+	#ifdef ENABLE_ILI9341_FRAMEBUFFER
+  	if (!_use_fbtft) beginSPITransaction();
+  	#else
 	beginSPITransaction();
+  	#endif
 	int16_t xbegin = x0;
 	if (steep) {
 		for (; x0<=x1; x0++) {
@@ -2319,8 +2323,15 @@ void ILI9341_t3n::drawLine(int16_t x0, int16_t y0,
 			HLine(xbegin, y0, x0 - xbegin, color);
 		}
 	}
+	#ifdef ENABLE_ILI9341_FRAMEBUFFER
+  	if (!_use_fbtft) {
+		writecommand_last(ILI9341_NOP);
+		endSPITransaction();
+  	}
+  	#else
 	writecommand_last(ILI9341_NOP);
 	endSPITransaction();
+  	#endif
 }
 
 // Draw a rectangle
