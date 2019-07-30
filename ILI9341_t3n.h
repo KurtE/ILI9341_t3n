@@ -66,8 +66,6 @@
 #define SCREEN_DMA_NUM_SETTINGS 3 // see if making it a constant value makes difference...
 #elif defined(__IMXRT1052__) || defined(__IMXRT1062__)
 #define ENABLE_ILI9341_FRAMEBUFFER
-//#define SCREEN_DMA_NUM_SETTINGS (((uint32_t)((2 * ILI9341_TFTHEIGHT * ILI9341_TFTWIDTH) / 65536UL))+1)
-#define SCREEN_DMA_NUM_SETTINGS 4 // see if making it a constant value makes difference...
 #endif
 #endif
 
@@ -186,10 +184,6 @@ typedef struct {
 	unsigned char line_space;
 	unsigned char cap_height;
 } ILI9341_t3_font_t;
-
-#define ILI9341_DMA_INIT	0x01 	// We have init the Dma settings
-#define ILI9341_DMA_CONT	0x02 	// continuous mode
-#define ILI9341_DMA_ACTIVE  0x80    // Is currently active
 
 //These enumerate the text plotting alignment (reference datum point)
 #define TL_DATUM 0 // Top left (default)
@@ -391,6 +385,7 @@ class ILI9341_t3n : public Print
 	void resetScrollBackgroundColor(uint16_t color);
 
 	// added support to use optional Frame buffer
+	enum {ILI9341_DMA_INIT=0x01, ILI9341_DMA_CONT=0x02, ILI9341_DMA_FINISH=0x04,ILI9341_DMA_ACTIVE=0x80};
 	void	setFrameBuffer(uint16_t *frame_buffer);
 	uint8_t useFrameBuffer(boolean b);		// use the frame buffer?  First call will allocate
 	void	freeFrameBuffer(void);			// explicit call to release the buffer
@@ -495,10 +490,20 @@ class ILI9341_t3n : public Print
 	static DMASetting 	_dmasettings[4];
 	static DMAChannel  	_dmatx;
 	#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
-	// Going to try it similar to T4.
-	static DMASetting 	_dmasettings[4];
-	static DMAChannel  	_dmatx;
-	uint32_t 			_spi_fcr_save;		// save away previous FCR register value
+	  // try work around DMA memory cached.  So have a couple of buffers we copy frame buffer into
+	  // as to move it out of the memory that is cached...
+
+	static const uint32_t _count_pixels = ILI9341_TFTWIDTH * ILI9341_TFTHEIGHT;
+	DMASetting   		_dmasettings[2];
+	DMAChannel   		_dmatx;
+	volatile    uint32_t _dma_pixel_index = 0;
+	volatile uint16_t 	_dma_sub_frame_count = 0; // Can return a frame count...
+	uint16_t          	_dma_buffer_size;   // the actual size we are using <= DMA_BUFFER_SIZE;
+	uint16_t          	_dma_cnt_sub_frames_per_frame;  
+	static const uint16_t    DMA_BUFFER_SIZE = 960;
+	uint16_t          	_dma_buffer1[DMA_BUFFER_SIZE] __attribute__ ((aligned(4)));
+	uint16_t          	_dma_buffer2[DMA_BUFFER_SIZE] __attribute__ ((aligned(4)));
+uint32_t 				_spi_fcr_save;		// save away previous FCR register value
 	#else
 	// T3.5 - had issues scatter/gather so do just use channels/interrupts
 	// and update and continue
