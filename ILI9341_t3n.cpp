@@ -80,15 +80,41 @@ uint16_t	ILI9341_t3n::_dma_write_size_words;
 volatile short _dma_dummy_rx;
 #endif	
 
+#if defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
+ILI9341_t3n *ILI9341_t3n::_dmaActiveDisplay[3] = {0, 0, 0};
+#else
 ILI9341_t3n *ILI9341_t3n::_dmaActiveDisplay = 0;
-volatile uint8_t  	ILI9341_t3n::_dma_state = 0;  // Use pointer to this as a way to get back to object...
-volatile uint32_t	ILI9341_t3n::_dma_frame_count = 0;	// Can return a frame count...
+#endif
 
+//volatile uint8_t  	ILI9341_t3n::_dma_state = 0;  // Use pointer to this as a way to get back to object...
+//volatile uint32_t	ILI9341_t3n::_dma_frame_count = 0;	// Can return a frame count...
+
+
+#if defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
+void ILI9341_t3n::dmaInterrupt(void) {
+	if (_dmaActiveDisplay[0])  {
+		_dmaActiveDisplay[0]->process_dma_interrupt();
+	}
+}
+void ILI9341_t3n::dmaInterrupt1(void) {
+	if (_dmaActiveDisplay[1])  {
+		_dmaActiveDisplay[1]->process_dma_interrupt();
+	}
+}
+void ILI9341_t3n::dmaInterrupt2(void) {
+	if (_dmaActiveDisplay[2])  {
+		_dmaActiveDisplay[2]->process_dma_interrupt();
+	}
+}
+
+
+#else
 void ILI9341_t3n::dmaInterrupt(void) {
 	if (_dmaActiveDisplay)  {
 		_dmaActiveDisplay->process_dma_interrupt();
 	}
 }
+#endif
 
 #ifdef DEBUG_ASYNC_UPDATE
 extern void dumpDMA_TCD(DMABaseClass *dmabc);
@@ -158,7 +184,7 @@ void ILI9341_t3n::process_dma_interrupt(void) {
 			// Serial.println("Do End transaction");
 			endSPITransaction();
 			_dma_state &= ~(ILI9341_DMA_ACTIVE | ILI9341_DMA_FINISH);
-			_dmaActiveDisplay = 0;	// We don't have a display active any more... 
+			_dmaActiveDisplay[_spi_num]  = 0;	// We don't have a display active any more... 
 
  			// Serial.println("After End transaction");
 			//Serial.println("$");
@@ -483,7 +509,9 @@ void	ILI9341_t3n::initDMASettings(void)
 	_dmatx.begin(true);
 	_dmatx.triggerAtHardwareEvent(dmaTXevent);
 	_dmatx = _dmasettings[0];
-	_dmatx.attachInterrupt(dmaInterrupt);
+	if (_spi_num == 0) _dmatx.attachInterrupt(dmaInterrupt);
+	else if (_spi_num == 1) _dmatx.attachInterrupt(dmaInterrupt1);
+	else _dmatx.attachInterrupt(dmaInterrupt2);
 #else
 	// T3.5
 	// Lets setup the write size.  For SPI we can use up to 32767 so same size as we use on T3.6...
@@ -663,7 +691,7 @@ bool ILI9341_t3n::updateScreenAsync(bool update_cont)					// call to say update 
   	_dmatx.enable();
 
 	_dma_frame_count = 0;  // Set frame count back to zero. 
-	_dmaActiveDisplay = this;
+	_dmaActiveDisplay[_spi_num]  = this;
 	if (update_cont) {
 		_dma_state |= ILI9341_DMA_CONT;
 	} else {
@@ -1963,7 +1991,13 @@ void ILI9341_t3n::begin(void)
 				#ifdef SPIN2_OBJECT_CREATED			
 				if (SPIN2.pinIsMOSI(_mosi) && SPIN2.pinIsMISO(_miso) && SPIN2.pinIsSCK(_sclk)) {
 					_pspin = &SPIN2;
-					_pkinetisk_spi = &_pspin->port();
+#ifdef KINETISK
+				_pkinetisk_spi = &_pspin->port();
+#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x 
+				_pimxrt_spi = &_pspin->port();
+#else
+				_pkinetisl_spi = &_pspin->port();
+#endif				
 					//Serial.println("ILI9341_t3n: SPIN2 automatically selected");
 				} else {
 				#endif
@@ -2002,6 +2036,14 @@ void ILI9341_t3n::begin(void)
         if (_miso != 0xff) _pspin->setMISO(_miso);
         _pspin->setSCK(_sclk);
 	}
+	// There is probably a cleaner way to do this... 
+	_spi_num = 0;	// 
+	#ifdef SPIN1_OBJECT_CREATED			
+	if (_pspin == &SPIN1) _spi_num = 1;
+	#endif
+	#ifdef SPIN2_OBJECT_CREATED			
+	if (_pspin == &SPIN2) _spi_num = 2;
+	#endif
 
 	_pspin->begin();
 #ifdef KINETISK

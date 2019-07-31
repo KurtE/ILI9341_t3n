@@ -406,6 +406,7 @@ class ILI9341_t3n : public Print
 	#endif
  protected:
  	SPINClass *_pspin;
+  	uint8_t   _spi_num;          // Which buss is this spi on? 
 #if defined(KINETISK)
  	KINETISK_SPI_t *_pkinetisk_spi;
 #elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
@@ -482,9 +483,13 @@ class ILI9341_t3n : public Print
     uint8_t		_use_fbtft;						// Are we in frame buffer mode?
     uint16_t	*_we_allocated_buffer;			// We allocated the buffer; 
     // Add DMA support. 
+#if defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
+	static  ILI9341_t3n 		*_dmaActiveDisplay[3];  // Use pointer to this as a way to get back to object...
+#else
 	static  ILI9341_t3n 		*_dmaActiveDisplay;  // Use pointer to this as a way to get back to object...
-	static volatile uint8_t  	_dma_state;  		// DMA status
-	static volatile uint32_t	_dma_frame_count;	// Can return a frame count...
+#endif
+	volatile uint8_t  	_dma_state = 0;  		// DMA status
+	volatile uint32_t	_dma_frame_count = 0;	// Can return a frame count...
 	#if defined(__MK66FX1M0__) 
 	// T3.6 use Scatter/gather with chain to do transfer
 	static DMASetting 	_dmasettings[4];
@@ -503,7 +508,9 @@ class ILI9341_t3n : public Print
 	static const uint16_t    DMA_BUFFER_SIZE = 960;
 	uint16_t          	_dma_buffer1[DMA_BUFFER_SIZE] __attribute__ ((aligned(4)));
 	uint16_t          	_dma_buffer2[DMA_BUFFER_SIZE] __attribute__ ((aligned(4)));
-uint32_t 				_spi_fcr_save;		// save away previous FCR register value
+	uint32_t 				_spi_fcr_save;		// save away previous FCR register value
+	static void dmaInterrupt1(void);
+	static void dmaInterrupt2(void);
 	#else
 	// T3.5 - had issues scatter/gather so do just use channels/interrupts
 	// and update and continue
