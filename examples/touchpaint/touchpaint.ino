@@ -16,7 +16,7 @@
 
 #include <SPI.h>
 #include <Wire.h>      // this is needed even tho we aren't using it
-#include <ili9341_t3n.h>
+#include <ILI9341_t3n.h>
 #include <Adafruit_STMPE610.h>
 
 // This is calibration data for the raw touch data to the screen coordinates

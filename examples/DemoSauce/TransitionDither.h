@@ -2,7 +2,7 @@
 #define TRANSITION_DITHER_H__
 
 #include <Arduino.h>
-#include "ili9341_t3n.h"
+#include <ILI9341_t3n.h>
 #include "MathUtil.h"
 #include "BaseTransition.h"
 

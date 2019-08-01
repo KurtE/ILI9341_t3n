@@ -5,7 +5,7 @@
 //
 #include <SPI.h>
 #include <Wire.h>
-#include <ili9341_t3n.h>
+#include <ILI9341_t3n.h>
 #include <TouchScreen.h>
 
 //Touchscreen X+ X- Y+ Y- pins

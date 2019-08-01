@@ -17,7 +17,7 @@
 
 #include <Adafruit_GFX.h>    // Core graphics library
 #include <SPI.h>
-#include <ili9341_t3n.h>
+#include <ILI9341_t3n.h>
 #include "TouchScreen.h"
 
 // These are the four touchscreen analog pins
