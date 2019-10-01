@@ -2612,7 +2612,7 @@ void ILI9341_t3n::drawChar(int16_t x, int16_t y, unsigned char c,
 	   ((y + 8 * size_y - 1) < 0))   // Clip top   TODO: is this correct?
 		return;
 
-	Serial.printf("drawchar %d %d %c %x %x %d %d\n", x, y, c, fgcolor, bgcolor, size_x, size_y);
+//	Serial.printf("drawchar %d %d %c %x %x %d %d\n", x, y, c, fgcolor, bgcolor, size_x, size_y);
 	if (fgcolor == bgcolor) {
 		// This transparent approach is only about 20% faster
 		if ((size_x == 1) && (size_y == 1)) {
