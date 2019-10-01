@@ -950,7 +950,7 @@ public:
 		_gfx->drawRoundRect(_x - (_w/2), _y - (_h/2), _w, _h, min(_w,_h)/4, outline);
 		_gfx->setCursor(_x - strlen(_label)*3*_textsize_x, _y-4*_textsize_y);
 		_gfx->setTextColor(text);
-		_gfx->setTextSize(_textsize_x. _textsize_y);
+		_gfx->setTextSize(_textsize_x, _textsize_y);
 		_gfx->print(_label);
 	}
 
