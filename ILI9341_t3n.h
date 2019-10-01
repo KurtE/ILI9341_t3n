@@ -912,10 +912,11 @@ class ILI9341_t3n : public Print
 // you #include ILI9341_t3.h.
 // Warning the implemention of class needs to be here, else the code
 // compiled in the c++ file will cause duplicate defines in the link phase. 
-#ifndef _ADAFRUIT_GFX_H
-class Adafruit_GFX_Button {
+//#ifndef _ADAFRUIT_GFX_H
+#define Adafruit_GFX_Button ILI9341_Button
+class ILI9341_Button {
 public:
-	Adafruit_GFX_Button(void) { _gfx = NULL; }
+	ILI9341_Button(void) { _gfx = NULL; }
 	void initButton(ILI9341_t3n *gfx, int16_t x, int16_t y,
 		uint8_t w, uint8_t h,
 		uint16_t outline, uint16_t fill, uint16_t textcolor,
@@ -976,7 +977,7 @@ private:
 	char _label[10];
 	boolean currstate, laststate;
 };
-#endif
+//#endif
 
 #endif // __cplusplus
 
