@@ -542,7 +542,7 @@ void	ILI9341_t3n::initDMASettings(void)
 		_dma_write_size_words = 480;
 	    _dmatx.triggerAtTransfersOf(_dmarx);
 	}
-	Serial.printf("Init DMA Settings: TX:%d size:%d\n", dmaTXevent, _dma_write_size_words);
+	//Serial.printf("Init DMA Settings: TX:%d size:%d\n", dmaTXevent, _dma_write_size_words);
 
 #endif
 	_dma_state = ILI9341_DMA_INIT;  // Should be first thing set!
@@ -711,7 +711,7 @@ bool ILI9341_t3n::updateScreenAsync(bool update_cont)					// call to say update 
 	_dmatx.TCD->SLAST = 0;	// Finish with it pointing to next location
 	_dmarx.transferCount(_dma_write_size_words);
 	_dma_count_remaining = CBALLOC/2 - _dma_write_size_words;	// how much more to transfer? 
-	Serial.printf("SPI1/2 - TC:%d TR:%d\n", _dma_write_size_words, _dma_count_remaining);
+	//Serial.printf("SPI1/2 - TC:%d TR:%d\n", _dma_write_size_words, _dma_count_remaining);
 
 #ifdef DEBUG_ASYNC_UPDATE
 	dumpDMASettings();
@@ -2825,12 +2825,42 @@ void ILI9341_t3n::setFont(const ILI9341_t3_font_t &f) {
 // Maybe support GFX Fonts as well?
 void ILI9341_t3n::setFont(const GFXfont *f) {
 	font = NULL;	// turn off the other font... 
+	if (f == gfxFont) return;	// same font or lack of so can bail.
+
     if(f) {            // Font struct pointer passed in?
         if(!gfxFont) { // And no current font struct?
             // Switching from classic to new font behavior.
             // Move cursor pos down 6 pixels so it's on baseline.
             cursor_y += 6;
         }
+
+        // Test wondering high and low of Ys here... 
+        int8_t miny_offset = 0;
+#if 1
+        for (uint8_t i=0; i <= (f->last - f->first); i++) {
+        	if (f->glyph[i].yOffset < miny_offset) {
+        		miny_offset = f->glyph[i].yOffset;
+        	}
+        }
+#else        
+        int max_delta = 0;
+        uint8_t index_min = 0;
+        uint8_t index_max = 0;
+        for (uint8_t i=0; i <= (f->last - f->first); i++) {
+        	if (f->glyph[i].yOffset < miny_offset) {
+        		miny_offset = f->glyph[i].yOffset;
+        		index_min = i;
+        	}
+        	if ( (f->glyph[i].yOffset + f->glyph[i].height) > max_delta) {
+        		max_delta = (f->glyph[i].yOffset + f->glyph[i].height);
+        		index_max = i;
+        	}
+        }
+        Serial.printf("Set GFX Font(%x): Y %d %d(%c) %d(%c)\n", (uint32_t)f, f->yAdvance, miny_offset, index_min + f->first, 
+        	max_delta, index_max + f->first);
+#endif
+        _gfxFont_min_yOffset = miny_offset;	// Probably only thing we need... May cache? 
+
     } else if(gfxFont) { // NULL passed.  Current font struct defined?
         // Switching from new to classic font behavior.
         // Move cursor pos up 6 pixels so it's at top-left of char.
@@ -3674,42 +3704,239 @@ void ILI9341_t3n::drawGFXFontChar(unsigned int c) {
 
     uint16_t bo = glyph->bitmapOffset;
     uint8_t  xx, yy, bits = 0, bit = 0;
+    //Serial.printf("DGFX_char: %c (%d,%d) : %u %u %u %u %d %d %x %x %d\n", c, cursor_x, cursor_y, w, h,  
+    //			glyph->xAdvance, gfxFont->yAdvance, xo, yo, textcolor, textbgcolor, _use_fbtft);Serial.flush();
 
-    // Serial.printf("DGFXChar: %c %u, %u, wh:%d %d o:%d %d\n", c, cursor_x, cursor_y, w, h, xo, yo);
-    // Todo: Add character clipping here
+    if (textcolor == textbgcolor) {
 
-    // NOTE: THERE IS NO 'BACKGROUND' COLOR OPTION ON CUSTOM FONTS.
-    // THIS IS ON PURPOSE AND BY DESIGN.  The background color feature
-    // has typically been used with the 'classic' font to overwrite old
-    // screen contents with new data.  This ONLY works because the
-    // characters are a uniform size; it's not a sensible thing to do with
-    // proportionally-spaced fonts with glyphs of varying sizes (and that
-    // may overlap).  To replace previously-drawn text when using a custom
-    // font, use the getTextBounds() function to determine the smallest
-    // rectangle encompassing a string, erase the area with fillRect(),
-    // then draw new text.  This WILL infortunately 'blink' the text, but
-    // is unavoidable.  Drawing 'background' pixels will NOT fix this,
-    // only creates a new set of problems.  Have an idea to work around
-    // this (a canvas object type for MCUs that can afford the RAM and
-    // displays supporting setAddrWindow() and pushColors()), but haven't
-    // implemented this yet.
+	    // Serial.printf("DGFXChar: %c %u, %u, wh:%d %d o:%d %d\n", c, cursor_x, cursor_y, w, h, xo, yo);
+	    // Todo: Add character clipping here
 
-    for(yy=0; yy<h; yy++) {
-        for(xx=0; xx<w; xx++) {
-            if(!(bit++ & 7)) {
-                bits = bitmap[bo++];
-            }
-            if(bits & 0x80) {
-                if((textsize_x == 1) && (textsize_y == 1)){
-                    drawPixel(cursor_x+xo+xx, cursor_y+yo+yy, textcolor);
-                } else {
-                fillRect(cursor_x+(xo+xx)*textsize_x, cursor_y+(yo+yy)*textsize_y,
-                      textsize_x, textsize_y, textcolor);
-                }
-            }
-            bits <<= 1;
-        }
-    }
+    	// NOTE: Adafruit GFX does not support Opaque font output as there
+    	// are issues with proportionally spaced characters that may overlap
+    	// So the below is not perfect as we may overwrite a small portion 
+    	// of a letter with the next one, when we blank out... 
+    	// But: I prefer to let each of us decide if the limitations are
+    	// worth it or not.  If Not you still have the option to not
+    	// Do transparent mode and instead blank out and blink...
+
+	    for(yy=0; yy<h; yy++) {
+	        for(xx=0; xx<w; xx++) {
+	            if(!(bit++ & 7)) {
+	                bits = bitmap[bo++];
+	            }
+	            if(bits & 0x80) {
+	                if((textsize_x == 1) && (textsize_y == 1)){
+	                    drawPixel(cursor_x+xo+xx, cursor_y+yo+yy, textcolor);
+	                } else {
+	                fillRect(cursor_x+(xo+xx)*textsize_x, cursor_y+(yo+yy)*textsize_y,
+	                      textsize_x, textsize_y, textcolor);
+	                }
+	            }
+	            bits <<= 1;
+	        }
+	    }
+	} else {
+		// To Do, properly clipping and offsetting...
+		// This solid background approach is about 5 time faster
+		// Lets calculate bounding rectangle that we will update
+		// We need to offset by the origin.
+
+		// We are going direct so do some offsets and clipping
+		int16_t x_start = cursor_x + _originx;  // I am assuming no negative x offsets.
+		int16_t x_end = x_start + (glyph->xAdvance * textsize_x);
+		if (glyph->xAdvance < (xo + w)) x_end = x_start + ((xo + w)* textsize_x);  // BUGBUG Overlflows into next char position.
+		int16_t x;
+		int16_t x_left_fill = x_start + xo * textsize_x;
+
+		int16_t y_start = cursor_y + _originy + (_gfxFont_min_yOffset * textsize_y);  // UP to most negative value.
+		int16_t y_end = y_start +  gfxFont->yAdvance * textsize_y;  // how far we will update
+		int16_t y = y_start;
+		int8_t y_top_fill = (yo - _gfxFont_min_yOffset) * textsize_y;	 // both negative like -10 - -16 = 6...
+
+		// See if anything is within clip rectangle, if not bail
+		if((x_start >= _displayclipx2)   || // Clip right
+			 (y_start >= _displayclipy2) || // Clip bottom
+			 (x_end < _displayclipx1)    || // Clip left
+			 (y_end < _displayclipy1))  	// Clip top 
+		{
+			// But remember to first update the cursor position
+			cursor_x += glyph->xAdvance * (int16_t)textsize_x;
+			return;
+		}
+
+		// If our y_end > _displayclipy2 set it to _displayclipy2 as to not have to test both  Likewise X
+		if (y_end > _displayclipy2) y_end = _displayclipy2;
+		if (x_end > _displayclipx2) x_end = _displayclipx2;
+
+
+		#ifdef ENABLE_ILI9341_FRAMEBUFFER
+		if (_use_fbtft) {
+			// lets try to output the values directly...
+			uint16_t * pfbPixel_row = &_pfbtft[ y_start *_width + x_start];
+			uint16_t * pfbPixel;
+			// First lets fill in the top parts above the actual rectangle...
+			while (y_top_fill--) {
+				pfbPixel = pfbPixel_row;
+				if ( (y >= _displayclipy1) && (y < _displayclipy2)) {
+					for (int16_t xx = x_start; xx < x_end; xx++) {
+						if (xx >= _displayclipx1) {
+							*pfbPixel = textbgcolor;
+						}
+						pfbPixel++;
+					}					
+				}
+				pfbPixel_row += _width;
+				y++;
+			}
+			// Now lets output all of the pixels for each of the rows.. 
+			for(yy=0; (yy<h) && (y < _displayclipy2); yy++) {
+				uint16_t bo_save = bo;
+				uint8_t bit_save = bit;
+				uint8_t bits_save = bits;
+				for (uint8_t yts = 0; (yts < textsize_y) && (y < _displayclipy2); yts++) {
+					pfbPixel = pfbPixel_row;
+					// need to repeat the stuff for each row...
+					bo = bo_save;
+					bit = bit_save;
+					bits = bits_save;
+					x = x_start;
+					if (y >= _displayclipy1) {
+						while (x < x_left_fill) {
+							if ( (x >= _displayclipx1) && (x < _displayclipx2)) {
+								*pfbPixel = textbgcolor;
+							}
+							pfbPixel++;
+							x++;
+
+						}
+				        for(xx=0; xx<w; xx++) {
+				            if(!(bit++ & 7)) {
+				                bits = bitmap[bo++];
+				            }
+				            uint16_t color = (bits & 0x80)? textcolor : textbgcolor;
+				            for (uint8_t xts = 0; xts < textsize_x; xts++) {
+								if ( (x >= _displayclipx1) && (x < _displayclipx2)) {
+				            		*pfbPixel = color;
+				            	}
+								pfbPixel++;
+				            	x++;	// remember our logical position...
+				            }
+				            bits <<= 1;
+				        }
+				        // Fill in any additional bg colors to right of our output
+				        while (x++ < x_end) {
+							if (x >= _displayclipx1) {
+				        		*pfbPixel = textbgcolor;
+				        	}
+							pfbPixel++;
+				        }
+				    }
+			        y++;	// remember which row we just output
+					pfbPixel_row += _width;
+			    }
+		    }
+		    // And output any more rows below us...
+			while (y < y_end) {
+				if (y >= _displayclipy1) {
+					pfbPixel = pfbPixel_row;
+					for (int16_t xx = x_start; xx < x_end; xx++) {
+						if (xx >= _displayclipx1) {
+			        		*pfbPixel = textbgcolor;
+			        	}
+						pfbPixel++;
+					}					
+				}
+				pfbPixel_row += _width;
+				y++;
+			}
+
+		} else 
+		#endif
+		{
+			// lets try to output text in one output rectangle
+			//Serial.printf("    SPI (%d %d) (%d %d)\n", x_start, y_start, x_end, y_end);Serial.flush();
+			// compute the actual region we will output given 
+			beginSPITransaction();
+		
+			setAddr((x_start >= _displayclipx1) ? x_start : _displayclipx1, 
+					(y_start >= _displayclipy1) ? y_start : _displayclipy1, 
+					x_end  - 1,  y_end - 1); 
+			writecommand_cont(ILI9341_RAMWR);
+			//Serial.printf("SetAddr: %u %u %u %u\n", (x_start >= _displayclipx1) ? x_start : _displayclipx1, 
+			//		(y_start >= _displayclipy1) ? y_start : _displayclipy1, 
+			//		x_end  - 1,  y_end - 1); 
+			// First lets fill in the top parts above the actual rectangle...
+			//Serial.printf("    y_top_fill %d x_left_fill %d\n", y_top_fill, x_left_fill);
+			while (y_top_fill--) {
+				if ( (y >= _displayclipy1) && (y < _displayclipy2)) {
+					for (int16_t xx = x_start; xx < x_end; xx++) {
+						if (xx >= _displayclipx1) {
+							writedata16_cont(textbgcolor);
+						}
+					}					
+				}
+				y++;
+			}
+			//Serial.println("    After top fill"); Serial.flush();
+			// Now lets output all of the pixels for each of the rows.. 
+			for(yy=0; (yy<h) && (y < _displayclipy2); yy++) {
+				uint16_t bo_save = bo;
+				uint8_t bit_save = bit;
+				uint8_t bits_save = bits;
+				for (uint8_t yts = 0; (yts < textsize_y) && (y < _displayclipy2); yts++) {
+					// need to repeat the stuff for each row...
+					bo = bo_save;
+					bit = bit_save;
+					bits = bits_save;
+					x = x_start;
+					if (y >= _displayclipy1) {
+						while (x < x_left_fill) {
+							if ( (x >= _displayclipx1) && (x < _displayclipx2)) {
+								writedata16_cont(textbgcolor);
+							}
+							x++;
+						}
+				        for(xx=0; xx<w; xx++) {
+				            if(!(bit++ & 7)) {
+				                bits = bitmap[bo++];
+				            }
+				            uint16_t color = (bits & 0x80)? textcolor : textbgcolor;
+				            for (uint8_t xts = 0; xts < textsize_x; xts++) {
+								if ( (x >= _displayclipx1) && (x < _displayclipx2)) {
+									writedata16_cont(color);
+								}
+				            	x++;	// remember our logical position...
+				            }
+				            bits <<= 1;
+				        }
+				        // Fill in any additional bg colors to right of our output
+				        while (x < x_end) {
+							if (x >= _displayclipx1) {
+				        		writedata16_cont(textbgcolor);
+				        	}
+				        	x++;
+				        }
+			    	}
+		        	y++;	// remember which row we just output
+			    }
+		    }
+		    // And output any more rows below us...
+		    //Serial.println("    Bottom fill"); Serial.flush();
+			while (y < y_end) {
+				if (y >= _displayclipy1) {
+					for (int16_t xx = x_start; xx < x_end; xx++) {
+						if (xx >= _displayclipx1)  {
+							writedata16_cont(textbgcolor);
+						}
+					}
+				}
+				y++;
+			}
+			writecommand_last(ILI9341_NOP);
+			endSPITransaction();
+		}
+	}
 
     cursor_x += glyph->xAdvance * (int16_t)textsize_x;
 }

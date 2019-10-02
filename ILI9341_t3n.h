@@ -484,16 +484,20 @@ class ILI9341_t3n : public Print
 	uint8_t textsize_x, textsize_y, rotation, textdatum;
 	boolean wrap; // If set, 'wrap' text at right edge of display
 	const ILI9341_t3_font_t *font;
-	const GFXfont *gfxFont = nullptr;
 	// Anti-aliased font support
 	uint8_t fontbpp = 1;
 	uint8_t fontbppindex = 0;
 	uint8_t fontbppmask = 1;
 	uint8_t fontppb = 8;
 	uint8_t* fontalphalut;
-	float fontalphamx = 1;
-	
+	float fontalphamx = 1;	
+
 	uint32_t padX;
+
+	// GFX Font support
+	const GFXfont *gfxFont = nullptr;
+	int8_t _gfxFont_min_yOffset = 0;
+	
 
   	uint8_t  _rst;
   	uint8_t _cs, _dc;
