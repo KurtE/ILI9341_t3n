@@ -66,8 +66,6 @@
 #define SCREEN_DMA_NUM_SETTINGS 3 // see if making it a constant value makes difference...
 #elif defined(__IMXRT1052__) || defined(__IMXRT1062__)
 #define ENABLE_ILI9341_FRAMEBUFFER
-//#define SCREEN_DMA_NUM_SETTINGS (((uint32_t)((2 * ILI9341_TFTHEIGHT * ILI9341_TFTWIDTH) / 65536UL))+1)
-#define SCREEN_DMA_NUM_SETTINGS 4 // see if making it a constant value makes difference...
 #endif
 #endif
 
@@ -80,6 +78,7 @@
 #include <DMAChannel.h>
 
 #endif
+#include <stdint.h>
 
 #define ILI9341_TFTWIDTH  240
 #define ILI9341_TFTHEIGHT 320
@@ -186,10 +185,30 @@ typedef struct {
 	unsigned char line_space;
 	unsigned char cap_height;
 } ILI9341_t3_font_t;
+// Lets see about supporting Adafruit fonts as well?
+#ifndef _GFXFONT_H_
+#define _GFXFONT_H_
 
-#define ILI9341_DMA_INIT	0x01 	// We have init the Dma settings
-#define ILI9341_DMA_CONT	0x02 	// continuous mode
-#define ILI9341_DMA_ACTIVE  0x80    // Is currently active
+/// Font data stored PER GLYPH
+typedef struct {
+	uint16_t bitmapOffset;     ///< Pointer into GFXfont->bitmap
+	uint8_t  width;            ///< Bitmap dimensions in pixels
+    uint8_t  height;           ///< Bitmap dimensions in pixels
+	uint8_t  xAdvance;         ///< Distance to advance cursor (x axis)
+	int8_t   xOffset;          ///< X dist from cursor pos to UL corner
+    int8_t   yOffset;          ///< Y dist from cursor pos to UL corner
+} GFXglyph;
+
+/// Data stored for FONT AS A WHOLE
+typedef struct { 
+	uint8_t  *bitmap;      ///< Glyph bitmaps, concatenated
+	GFXglyph *glyph;       ///< Glyph array
+	uint8_t   first;       ///< ASCII extents (first char)
+    uint8_t   last;        ///< ASCII extents (last char)
+	uint8_t   yAdvance;    ///< Newline distance (y axis)
+} GFXfont;
+
+#endif // _GFXFONT_H_
 
 //These enumerate the text plotting alignment (reference datum point)
 #define TL_DATUM 0 // Top left (default)
@@ -320,12 +339,17 @@ class ILI9341_t3n : public Print
 	void drawRoundRect(int16_t x0, int16_t y0, int16_t w, int16_t h, int16_t radius, uint16_t color);
 	void fillRoundRect(int16_t x0, int16_t y0, int16_t w, int16_t h, int16_t radius, uint16_t color);
 	void drawBitmap(int16_t x, int16_t y, const uint8_t *bitmap, int16_t w, int16_t h, uint16_t color);
-	void drawChar(int16_t x, int16_t y, unsigned char c, uint16_t color, uint16_t bg, uint8_t size);
+	void drawChar(int16_t x, int16_t y, unsigned char c, uint16_t color, uint16_t bg, uint8_t size_x, uint8_t size_y);
+	void inline drawChar(int16_t x, int16_t y, unsigned char c, uint16_t color, uint16_t bg, uint8_t size) 
+	    { drawChar(x, y, c, color, bg, size);}
 	void setCursor(int16_t x, int16_t y);
     void getCursor(int16_t *x, int16_t *y);
 	void setTextColor(uint16_t c);
 	void setTextColor(uint16_t c, uint16_t bg);
-	void setTextSize(uint8_t s);
+    void setTextSize(uint8_t sx, uint8_t sy);
+	void inline setTextSize(uint8_t s) { setTextSize(s,s); }
+	uint8_t getTextSizeX();
+	uint8_t getTextSizeY();
 	uint8_t getTextSize();
 	void setTextWrap(boolean w);
 	boolean getTextWrap();
@@ -362,10 +386,16 @@ class ILI9341_t3n : public Print
 	int16_t getCursorX(void) const { return cursor_x; }
 	int16_t getCursorY(void) const { return cursor_y; }
 	void setFont(const ILI9341_t3_font_t &f);
-	void setFont() { font = NULL; }
-	void setFontAdafruit(void) { font = NULL; }
+    void setFont(const GFXfont *f = NULL);
+	void setFontAdafruit(void) { setFont(); }
 	void drawFontChar(unsigned int c);
-	int16_t strPixelLen(char * str);
+	void drawGFXFontChar(unsigned int c);
+
+    void getTextBounds(const char *string, int16_t x, int16_t y,
+      int16_t *x1, int16_t *y1, uint16_t *w, uint16_t *h);
+    void getTextBounds(const String &str, int16_t x, int16_t y,
+      int16_t *x1, int16_t *y1, uint16_t *w, uint16_t *h);
+	int16_t strPixelLen(const char * str);
 	
 	// added support for drawing strings/numbers/floats with centering
 	// modified from tft_ili9341_ESP github library
@@ -391,6 +421,7 @@ class ILI9341_t3n : public Print
 	void resetScrollBackgroundColor(uint16_t color);
 
 	// added support to use optional Frame buffer
+	enum {ILI9341_DMA_INIT=0x01, ILI9341_DMA_CONT=0x02, ILI9341_DMA_FINISH=0x04,ILI9341_DMA_ACTIVE=0x80};
 	void	setFrameBuffer(uint16_t *frame_buffer);
 	uint8_t useFrameBuffer(boolean b);		// use the frame buffer?  First call will allocate
 	void	freeFrameBuffer(void);			// explicit call to release the buffer
@@ -411,6 +442,7 @@ class ILI9341_t3n : public Print
 	#endif
  protected:
  	SPINClass *_pspin;
+  	uint8_t   _spi_num;          // Which buss is this spi on? 
 #if defined(KINETISK)
  	KINETISK_SPI_t *_pkinetisk_spi;
 #elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
@@ -449,7 +481,7 @@ class ILI9341_t3n : public Print
 
 	uint16_t textcolor, textbgcolor, scrollbgcolor;
 	uint32_t textcolorPrexpanded, textbgcolorPrexpanded;
-	uint8_t textsize, rotation, textdatum;
+	uint8_t textsize_x, textsize_y, rotation, textdatum;
 	boolean wrap; // If set, 'wrap' text at right edge of display
 	const ILI9341_t3_font_t *font;
 	// Anti-aliased font support
@@ -458,9 +490,14 @@ class ILI9341_t3n : public Print
 	uint8_t fontbppmask = 1;
 	uint8_t fontppb = 8;
 	uint8_t* fontalphalut;
-	float fontalphamx = 1;
-	
+	float fontalphamx = 1;	
+
 	uint32_t padX;
+
+	// GFX Font support
+	const GFXfont *gfxFont = nullptr;
+	int8_t _gfxFont_min_yOffset = 0;
+	
 
   	uint8_t  _rst;
   	uint8_t _cs, _dc;
@@ -487,18 +524,34 @@ class ILI9341_t3n : public Print
     uint8_t		_use_fbtft;						// Are we in frame buffer mode?
     uint16_t	*_we_allocated_buffer;			// We allocated the buffer; 
     // Add DMA support. 
+#if defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
+	static  ILI9341_t3n 		*_dmaActiveDisplay[3];  // Use pointer to this as a way to get back to object...
+#else
 	static  ILI9341_t3n 		*_dmaActiveDisplay;  // Use pointer to this as a way to get back to object...
-	static volatile uint8_t  	_dma_state;  		// DMA status
-	static volatile uint32_t	_dma_frame_count;	// Can return a frame count...
+#endif
+	volatile uint8_t  	_dma_state = 0;  		// DMA status
+	volatile uint32_t	_dma_frame_count = 0;	// Can return a frame count...
 	#if defined(__MK66FX1M0__) 
 	// T3.6 use Scatter/gather with chain to do transfer
 	static DMASetting 	_dmasettings[4];
 	static DMAChannel  	_dmatx;
 	#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
-	// Going to try it similar to T4.
-	static DMASetting 	_dmasettings[4];
-	static DMAChannel  	_dmatx;
-	uint32_t 			_spi_fcr_save;		// save away previous FCR register value
+	  // try work around DMA memory cached.  So have a couple of buffers we copy frame buffer into
+	  // as to move it out of the memory that is cached...
+
+	static const uint32_t _count_pixels = ILI9341_TFTWIDTH * ILI9341_TFTHEIGHT;
+	DMASetting   		_dmasettings[2];
+	DMAChannel   		_dmatx;
+	volatile    uint32_t _dma_pixel_index = 0;
+	volatile uint16_t 	_dma_sub_frame_count = 0; // Can return a frame count...
+	uint16_t          	_dma_buffer_size;   // the actual size we are using <= DMA_BUFFER_SIZE;
+	uint16_t          	_dma_cnt_sub_frames_per_frame;  
+	static const uint16_t    DMA_BUFFER_SIZE = 960;
+	uint16_t          	_dma_buffer1[DMA_BUFFER_SIZE] __attribute__ ((aligned(4)));
+	uint16_t          	_dma_buffer2[DMA_BUFFER_SIZE] __attribute__ ((aligned(4)));
+	uint32_t 				_spi_fcr_save;		// save away previous FCR register value
+	static void dmaInterrupt1(void);
+	static void dmaInterrupt2(void);
 	#else
 	// T3.5 - had issues scatter/gather so do just use channels/interrupts
 	// and update and continue
@@ -510,6 +563,8 @@ class ILI9341_t3n : public Print
 	static void dmaInterrupt(void);
 	void process_dma_interrupt(void);
 #endif
+  void charBounds(char c, int16_t *x, int16_t *y,
+      			int16_t *minx, int16_t *miny, int16_t *maxx, int16_t *maxy);
 
 	void setAddr(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1)
 	  __attribute__((always_inline)) {
@@ -859,16 +914,57 @@ class ILI9341_t3n : public Print
 // To avoid conflict when also using Adafruit_GFX or any Adafruit library
 // which depends on Adafruit_GFX, #include the Adafruit library *BEFORE*
 // you #include ILI9341_t3.h.
-#ifndef _ADAFRUIT_GFX_H
-class Adafruit_GFX_Button {
+// Warning the implemention of class needs to be here, else the code
+// compiled in the c++ file will cause duplicate defines in the link phase. 
+//#ifndef _ADAFRUIT_GFX_H
+#define Adafruit_GFX_Button ILI9341_Button
+class ILI9341_Button {
 public:
-	Adafruit_GFX_Button(void) { _gfx = NULL; }
+	ILI9341_Button(void) { _gfx = NULL; }
 	void initButton(ILI9341_t3n *gfx, int16_t x, int16_t y,
 		uint8_t w, uint8_t h,
 		uint16_t outline, uint16_t fill, uint16_t textcolor,
-		const char *label, uint8_t textsize);
-	void drawButton(bool inverted = false);
-	bool contains(int16_t x, int16_t y);
+		const char *label, uint8_t textsize_x, uint8_t textsize_y) {
+		_x = x;
+		_y = y;
+		_w = w;
+		_h = h;
+		_outlinecolor = outline;
+		_fillcolor = fill;
+		_textcolor = textcolor;
+		_textsize_x = textsize_x;
+		_textsize_y = textsize_y;
+		_gfx = gfx;
+		strncpy(_label, label, 9);
+		_label[9] = 0;
+
+	}
+	void drawButton(bool inverted = false) {
+		uint16_t fill, outline, text;
+
+		if (! inverted) {
+			fill = _fillcolor;
+			outline = _outlinecolor;
+			text = _textcolor;
+		} else {
+			fill =  _textcolor;
+			outline = _outlinecolor;
+			text = _fillcolor;
+		}
+		_gfx->fillRoundRect(_x - (_w/2), _y - (_h/2), _w, _h, min(_w,_h)/4, fill);
+		_gfx->drawRoundRect(_x - (_w/2), _y - (_h/2), _w, _h, min(_w,_h)/4, outline);
+		_gfx->setCursor(_x - strlen(_label)*3*_textsize_x, _y-4*_textsize_y);
+		_gfx->setTextColor(text);
+		_gfx->setTextSize(_textsize_x, _textsize_y);
+		_gfx->print(_label);
+	}
+
+	bool contains(int16_t x, int16_t y) {
+		if ((x < (_x - _w/2)) || (x > (_x + _w/2))) return false;
+		if ((y < (_y - _h/2)) || (y > (_y + _h/2))) return false;
+		return true;
+	}
+
 	void press(boolean p) {
 		laststate = currstate;
 		currstate = p;
@@ -880,12 +976,12 @@ private:
 	ILI9341_t3n *_gfx;
 	int16_t _x, _y;
 	uint16_t _w, _h;
-	uint8_t _textsize;
+	uint8_t _textsize_x, _textsize_y;
 	uint16_t _outlinecolor, _fillcolor, _textcolor;
 	char _label[10];
 	boolean currstate, laststate;
 };
-#endif
+//#endif
 
 #endif // __cplusplus
 

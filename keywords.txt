@@ -59,6 +59,9 @@ setFont	KEYWORD2
 setFontAdafruit	KEYWORD2
 drawFontChar	KEYWORD2
 strPixelLen	KEYWORD2
+getTextBounds	KEYWORD2
+getTextSizeX	KEYWORD2
+getTextSizeY	KEYWORD2
 Adafruit_GFX_Button	KEYWORD2
 initButton	KEYWORD2
 drawButton	KEYWORD2

@@ -51,6 +51,13 @@ In addition, this library now has some of the API's and functionality that has b
 	void setClipRect(int16_t x1, int16_t y1, int16_t w, int16_t h); 
 	void setClipRect();
 
+Font Support
+------------
+This library tries to support three different font types.  This includes the original font support that is in the ILI9341_t3 library, which is 
+built in system font, as well as the new font format. 
+
+In addition, we added support to use the Adafruit GFX fonts as well. This includes the ability to output the text in Opaque mode. 
+
 Discussion regarding this optimized version:
 ==========================
 

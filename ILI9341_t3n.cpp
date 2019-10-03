@@ -68,8 +68,8 @@
 DMASetting 	ILI9341_t3n::_dmasettings[4];
 DMAChannel 	ILI9341_t3n::_dmatx;
 #elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
-DMASetting 	ILI9341_t3n::_dmasettings[4];
-DMAChannel 	ILI9341_t3n::_dmatx;
+//DMASetting 	ILI9341_t3n::_dmasettings[4];
+//DMAChannel 	ILI9341_t3n::_dmatx;
 #else
 // T3.5 - had issues scatter/gather so do just use channels/interrupts
 // and update and continue
@@ -80,15 +80,41 @@ uint16_t	ILI9341_t3n::_dma_write_size_words;
 volatile short _dma_dummy_rx;
 #endif	
 
+#if defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
+ILI9341_t3n *ILI9341_t3n::_dmaActiveDisplay[3] = {0, 0, 0};
+#else
 ILI9341_t3n *ILI9341_t3n::_dmaActiveDisplay = 0;
-volatile uint8_t  	ILI9341_t3n::_dma_state = 0;  // Use pointer to this as a way to get back to object...
-volatile uint32_t	ILI9341_t3n::_dma_frame_count = 0;	// Can return a frame count...
+#endif
 
+//volatile uint8_t  	ILI9341_t3n::_dma_state = 0;  // Use pointer to this as a way to get back to object...
+//volatile uint32_t	ILI9341_t3n::_dma_frame_count = 0;	// Can return a frame count...
+
+
+#if defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
+void ILI9341_t3n::dmaInterrupt(void) {
+	if (_dmaActiveDisplay[0])  {
+		_dmaActiveDisplay[0]->process_dma_interrupt();
+	}
+}
+void ILI9341_t3n::dmaInterrupt1(void) {
+	if (_dmaActiveDisplay[1])  {
+		_dmaActiveDisplay[1]->process_dma_interrupt();
+	}
+}
+void ILI9341_t3n::dmaInterrupt2(void) {
+	if (_dmaActiveDisplay[2])  {
+		_dmaActiveDisplay[2]->process_dma_interrupt();
+	}
+}
+
+
+#else
 void ILI9341_t3n::dmaInterrupt(void) {
 	if (_dmaActiveDisplay)  {
 		_dmaActiveDisplay->process_dma_interrupt();
 	}
 }
+#endif
 
 #ifdef DEBUG_ASYNC_UPDATE
 extern void dumpDMA_TCD(DMABaseClass *dmabc);
@@ -117,50 +143,81 @@ void ILI9341_t3n::process_dma_interrupt(void) {
 #elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
 	// T4
 
-	_dma_frame_count++;
-
-	if ((_dma_state & ILI9341_DMA_CONT) == 0) {
-		// We are in single refresh mode or the user has called cancel so
-		// Lets try to release the CS pin
-		// Lets wait until FIFO is not empty
-		// Serial4.printf("Before FSR wait: %x %x\n", _pimxrt_spi->FSR, _pimxrt_spi->SR);
-		while (_pimxrt_spi->FSR & 0x1f)  ;	// wait until this one is complete
-
-		// Serial4.printf("Before SR busy wait: %x\n", _pimxrt_spi->SR);
-		while (_pimxrt_spi->SR & LPSPI_SR_MBF)  ;	// wait until this one is complete
-
-		_dmatx.clearComplete();
-		// Serial4.println("Restore FCR");
-		_pimxrt_spi->FCR = LPSPI_FCR_TXWATER(15); // _spi_fcr_save;	// restore the FSR status... 
- 		_pimxrt_spi->DER = 0;		// DMA no longer doing TX (or RX)
-
-		_pimxrt_spi->CR = LPSPI_CR_MEN | LPSPI_CR_RRF | LPSPI_CR_RTF;   // actually clear both...
-		_pimxrt_spi->SR = 0x3f00;	// clear out all of the other status...
-
-
-		maybeUpdateTCR(LPSPI_TCR_PCS(0) | LPSPI_TCR_FRAMESZ(7));	// output Command with 8 bits
-		// Serial4.printf("Output NOP (SR %x CR %x FSR %x FCR %x %x TCR:%x)\n", _pimxrt_spi->SR, _pimxrt_spi->CR, _pimxrt_spi->FSR, 
-		//	_pimxrt_spi->FCR, _spi_fcr_save, _pimxrt_spi->TCR);
-#ifdef DEBUG_ASYNC_LEDS
+	bool still_more_dma = true;
+	_dma_sub_frame_count++;
+//	Serial.print(".");
+	if (_dma_sub_frame_count == _dma_cnt_sub_frames_per_frame) {
+	#ifdef DEBUG_ASYNC_LEDS
 		digitalWriteFast(DEBUG_PIN_3, HIGH);
-#endif
-		_pspin->pending_rx_count = 0;	// Make sure count is zero
-		writecommand_last(ILI9341_NOP);
+	#endif
+		//Serial.println("*");
+		// We completed a frame. 
+		_dma_frame_count++;
+		// See if we are logically done
+		if (_dma_state & ILI9341_DMA_FINISH) {
+			//Serial.println("$");
+			still_more_dma = false;
+
+			// We are in single refresh mode or the user has called cancel so
+			// Lets try to release the CS pin
+			// Lets wait until FIFO is not empty
+			//Serial.printf("Before FSR wait: %x %x\n", _pimxrt_spi->FSR, _pimxrt_spi->SR);
+			while (_pimxrt_spi->FSR & 0x1f)  ;	// wait until this one is complete
+
+			//Serial.printf("Before SR busy wait: %x\n", _pimxrt_spi->SR);
+			while (_pimxrt_spi->SR & LPSPI_SR_MBF)  ;	// wait until this one is complete
+
+			_dmatx.clearComplete();
+			//Serial.println("Restore FCR");
+			_pimxrt_spi->FCR = LPSPI_FCR_TXWATER(15); // _spi_fcr_save;	// restore the FSR status... 
+	 		_pimxrt_spi->DER = 0;		// DMA no longer doing TX (or RX)
+
+			_pimxrt_spi->CR = LPSPI_CR_MEN | LPSPI_CR_RRF | LPSPI_CR_RTF;   // actually clear both...
+			_pimxrt_spi->SR = 0x3f00;	// clear out all of the other status...
+
+
+			maybeUpdateTCR(LPSPI_TCR_PCS(0) | LPSPI_TCR_FRAMESZ(7));	// output Command with 8 bits
+			// Serial.printf("Output NOP (SR %x CR %x FSR %x FCR %x %x TCR:%x)\n", _pimxrt_spi->SR, _pimxrt_spi->CR, _pimxrt_spi->FSR, 
+			//	_pimxrt_spi->FCR, _spi_fcr_save, _pimxrt_spi->TCR);
+			writecommand_last(ILI9341_NOP);
+
+			// Serial.println("Do End transaction");
+			endSPITransaction();
+			_dma_state &= ~(ILI9341_DMA_ACTIVE | ILI9341_DMA_FINISH);
+			_dmaActiveDisplay[_spi_num]  = 0;	// We don't have a display active any more... 
+
+ 			// Serial.println("After End transaction");
+			//Serial.println("$");
+		}
+		_dma_sub_frame_count = 0;
 #ifdef DEBUG_ASYNC_LEDS
 		digitalWriteFast(DEBUG_PIN_3, LOW);
 #endif
+	}
 
-		// Serial4.println("Do End transaction");
-		endSPITransaction();
-		_dma_state &= ~ILI9341_DMA_ACTIVE;
-		_dmaActiveDisplay = 0;	// We don't have a display active any more... 
+	if (still_more_dma) {
+		// we are still in a sub-frame so we need to copy memory down...
+		if (_dma_sub_frame_count == (_dma_cnt_sub_frames_per_frame-2)) {
+			if ((_dma_state & ILI9341_DMA_CONT) == 0) {
+				if (_dma_sub_frame_count & 1) _dmasettings[0].disableOnCompletion();
+				else _dmasettings[1].disableOnCompletion();
+				//Serial.println("!");
+				_dma_state |= ILI9341_DMA_FINISH;  // let system know we set the finished state
 
- 		// Serial4.println("After End transaction");
-	} else {
-		// maybe need to flush cache again
-		if ((uint32_t)_pfbtft >= 0x20200000u)  arm_dcache_flush(_pfbtft, CBALLOC);
+			}
+		}
+		if (_dma_sub_frame_count & 1) {
+			memcpy(_dma_buffer1, &_pfbtft[_dma_pixel_index], _dma_buffer_size*2);
+		} else {			
+			memcpy(_dma_buffer2, &_pfbtft[_dma_pixel_index], _dma_buffer_size*2);
+		}
+		_dma_pixel_index += _dma_buffer_size;
+		if (_dma_pixel_index >= (_count_pixels))
+			_dma_pixel_index = 0;		// we will wrap around 
 	}
 	_dmatx.clearInterrupt();
+	_dmatx.clearComplete();
+	asm("dsb");
 
 #else
 	// T3.5...
@@ -246,10 +303,11 @@ ILI9341_t3n::ILI9341_t3n(uint8_t cs, uint8_t dc, uint8_t rst,
 
 	rotation  = 0;
 	cursor_y  = cursor_x    = 0;
-	textsize  = 1;
+	textsize_x = textsize_y  = 1;
 	textcolor = textbgcolor = 0xFFFF;
 	wrap      = true;
 	font      = NULL;
+	gfxFont   = NULL;
 	setClipRect();
 	setOrigin();
 
@@ -423,38 +481,38 @@ void	ILI9341_t3n::initDMASettings(void)
 	_dmatx = _dmasettings[0];
 	_dmatx.attachInterrupt(dmaInterrupt);
 #elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
-	// Now lets setup DMA access to this memory... 
-	// Try to do like T3.6 except not kludge for first word...
-	// Serial4.println("DMA initDMASettings - before settings");
-	// Serial4.printf("  CWW: %d %d %d\n", CBALLOC, SCREEN_DMA_NUM_SETTINGS, COUNT_WORDS_WRITE);
-	_dmasettings[0].sourceBuffer(&_pfbtft[0], COUNT_WORDS_WRITE*2);
+	// See if moving the frame buffer to other memory that is not cached helps out
+	// to remove tearing and the like...I know with 256 it will be either 256 or 248...
+	_dma_buffer_size = DMA_BUFFER_SIZE;
+	_dma_cnt_sub_frames_per_frame = (_count_pixels) / _dma_buffer_size;
+	while ((_dma_cnt_sub_frames_per_frame * _dma_buffer_size) != (_count_pixels)) {
+		_dma_buffer_size--;
+		_dma_cnt_sub_frames_per_frame = (_count_pixels) / _dma_buffer_size;		
+	}
+
+	Serial.printf("DMA Init buf size: %d sub frames:%d\n", _dma_buffer_size, _dma_cnt_sub_frames_per_frame);
+
+	_dmasettings[0].sourceBuffer(_dma_buffer1, _dma_buffer_size*2);
 	_dmasettings[0].destination(_pimxrt_spi->TDR);
 	_dmasettings[0].TCD->ATTR_DST = 1;
 	_dmasettings[0].replaceSettingsOnCompletion(_dmasettings[1]);
+	_dmasettings[0].interruptAtCompletion();
 
-	_dmasettings[1].sourceBuffer(&_pfbtft[COUNT_WORDS_WRITE], COUNT_WORDS_WRITE*2);
+	_dmasettings[1].sourceBuffer(_dma_buffer2, _dma_buffer_size*2);
 	_dmasettings[1].destination(_pimxrt_spi->TDR);
 	_dmasettings[1].TCD->ATTR_DST = 1;
-	_dmasettings[1].replaceSettingsOnCompletion(_dmasettings[2]);
-
-	_dmasettings[2].sourceBuffer(&_pfbtft[COUNT_WORDS_WRITE*2], COUNT_WORDS_WRITE*2);
-	_dmasettings[2].destination(_pimxrt_spi->TDR);
-	_dmasettings[2].TCD->ATTR_DST = 1;
-	_dmasettings[2].replaceSettingsOnCompletion(_dmasettings[3]);
-
-	_dmasettings[3].sourceBuffer(&_pfbtft[COUNT_WORDS_WRITE*3], COUNT_WORDS_WRITE*2);
-	_dmasettings[3].destination(_pimxrt_spi->TDR);
-	_dmasettings[3].TCD->ATTR_DST = 1;
-	_dmasettings[3].replaceSettingsOnCompletion(_dmasettings[0]);
-	_dmasettings[3].interruptAtCompletion();
+	_dmasettings[1].replaceSettingsOnCompletion(_dmasettings[0]);
+	_dmasettings[1].interruptAtCompletion();
 
 	// Setup DMA main object
 	//Serial.println("Setup _dmatx");
-	// Serial4.println("DMA initDMASettings - before dmatx");
+	// Serial.println("DMA initDMASettings - before dmatx");
 	_dmatx.begin(true);
 	_dmatx.triggerAtHardwareEvent(dmaTXevent);
 	_dmatx = _dmasettings[0];
-	_dmatx.attachInterrupt(dmaInterrupt);
+	if (_spi_num == 0) _dmatx.attachInterrupt(dmaInterrupt);
+	else if (_spi_num == 1) _dmatx.attachInterrupt(dmaInterrupt1);
+	else _dmatx.attachInterrupt(dmaInterrupt2);
 #else
 	// T3.5
 	// Lets setup the write size.  For SPI we can use up to 32767 so same size as we use on T3.6...
@@ -484,7 +542,7 @@ void	ILI9341_t3n::initDMASettings(void)
 		_dma_write_size_words = 480;
 	    _dmatx.triggerAtTransfersOf(_dmarx);
 	}
-	Serial.printf("Init DMA Settings: TX:%d size:%d\n", dmaTXevent, _dma_write_size_words);
+	//Serial.printf("Init DMA Settings: TX:%d size:%d\n", dmaTXevent, _dma_write_size_words);
 
 #endif
 	_dma_state = ILI9341_DMA_INIT;  // Should be first thing set!
@@ -508,8 +566,6 @@ void ILI9341_t3n::dumpDMASettings() {
 	dumpDMA_TCD(&_dmatx);
 	dumpDMA_TCD(&_dmasettings[0]);
 	dumpDMA_TCD(&_dmasettings[1]);
-	dumpDMA_TCD(&_dmasettings[2]);
-	dumpDMA_TCD(&_dmasettings[3]);
 #else
 	Serial.printf("DMA dump TX:%d RX:%d\n", _dmatx.channel, _dmarx.channel);
 	dumpDMA_TCD(&_dmatx);
@@ -602,22 +658,19 @@ bool ILI9341_t3n::updateScreenAsync(bool update_cont)					// call to say update 
 	// T4
 	//==========================================
 #elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
-	// TODO
+  	// Start off remove disable on completion from both...
+	// it will be the ISR that disables it... 
+	_dmasettings[0].TCD->CSR &= ~( DMA_TCD_CSR_DREQ);
+	_dmasettings[1].TCD->CSR &= ~( DMA_TCD_CSR_DREQ);
 
-	if (update_cont) {
-		// Try to link in #3 into the chain
-		_dmasettings[3].TCD->CSR &= ~( DMA_TCD_CSR_DREQ);  // Don't disable on completion.
-	} else {
-		// In this case we will only run through once...
-		_dmasettings[3].disableOnCompletion();
-		_dma_state &= ~ILI9341_DMA_CONT;
-	}
 #ifdef DEBUG_ASYNC_UPDATE
 	dumpDMASettings();
 #endif
-
-	// Maybe have to flush cache to make DMA work...
-	if ((uint32_t)_pfbtft >= 0x20200000u)  arm_dcache_flush(_pfbtft, CBALLOC);
+	// Lets copy first parts of frame buffer into our two sub-frames
+	memcpy(_dma_buffer1, _pfbtft, _dma_buffer_size*2);
+	memcpy(_dma_buffer2, &_pfbtft[_dma_buffer_size], _dma_buffer_size*2);
+	_dma_pixel_index = _dma_buffer_size*2;
+	_dma_sub_frame_count = 0;	// 
 
 	beginSPITransaction();
 	// Doing full window. 
@@ -628,12 +681,10 @@ bool ILI9341_t3n::updateScreenAsync(bool update_cont)					// call to say update 
 	_spi_fcr_save = _pimxrt_spi->FCR;	// remember the FCR
 	_pimxrt_spi->FCR = 0;	// clear water marks... 	
 	maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(15) | LPSPI_TCR_RXMSK /*| LPSPI_TCR_CONT*/);
-//	_pimxrt_spi->CFGR1 |= LPSPI_CFGR1_NOSTALL;
-//	maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(15) | LPSPI_TCR_CONT);
  	_pimxrt_spi->DER = LPSPI_DER_TDDE;
 	_pimxrt_spi->SR = 0x3f00;	// clear out all of the other status...
 
-  	_dmatx.triggerAtHardwareEvent(DMAMUX_SOURCE_LPSPI4_TX );
+  	_dmatx.triggerAtHardwareEvent( _pspin->dmaTXEvent() );
 
  	_dmatx = _dmasettings[0];
 
@@ -641,7 +692,7 @@ bool ILI9341_t3n::updateScreenAsync(bool update_cont)					// call to say update 
   	_dmatx.enable();
 
 	_dma_frame_count = 0;  // Set frame count back to zero. 
-	_dmaActiveDisplay = this;
+	_dmaActiveDisplay[_spi_num]  = this;
 	if (update_cont) {
 		_dma_state |= ILI9341_DMA_CONT;
 	} else {
@@ -660,7 +711,7 @@ bool ILI9341_t3n::updateScreenAsync(bool update_cont)					// call to say update 
 	_dmatx.TCD->SLAST = 0;	// Finish with it pointing to next location
 	_dmarx.transferCount(_dma_write_size_words);
 	_dma_count_remaining = CBALLOC/2 - _dma_write_size_words;	// how much more to transfer? 
-	Serial.printf("SPI1/2 - TC:%d TR:%d\n", _dma_write_size_words, _dma_count_remaining);
+	//Serial.printf("SPI1/2 - TC:%d TR:%d\n", _dma_write_size_words, _dma_count_remaining);
 
 #ifdef DEBUG_ASYNC_UPDATE
 	dumpDMASettings();
@@ -722,8 +773,6 @@ void ILI9341_t3n::endUpdateAsync() {
 	if (_dma_state & ILI9341_DMA_CONT) {
 		_dma_state &= ~ILI9341_DMA_CONT; // Turn of the continueous mode
 #if defined(__MK66FX1M0__) 
-		_dmasettings[3].disableOnCompletion();
-#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
 		_dmasettings[3].disableOnCompletion();
 #endif
 	}
@@ -1943,7 +1992,13 @@ void ILI9341_t3n::begin(void)
 				#ifdef SPIN2_OBJECT_CREATED			
 				if (SPIN2.pinIsMOSI(_mosi) && SPIN2.pinIsMISO(_miso) && SPIN2.pinIsSCK(_sclk)) {
 					_pspin = &SPIN2;
-					_pkinetisk_spi = &_pspin->port();
+#ifdef KINETISK
+				_pkinetisk_spi = &_pspin->port();
+#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x 
+				_pimxrt_spi = &_pspin->port();
+#else
+				_pkinetisl_spi = &_pspin->port();
+#endif				
 					//Serial.println("ILI9341_t3n: SPIN2 automatically selected");
 				} else {
 				#endif
@@ -1982,6 +2037,14 @@ void ILI9341_t3n::begin(void)
         if (_miso != 0xff) _pspin->setMISO(_miso);
         _pspin->setSCK(_sclk);
 	}
+	// There is probably a cleaner way to do this... 
+	_spi_num = 0;	// 
+	#ifdef SPIN1_OBJECT_CREATED			
+	if (_pspin == &SPIN1) _spi_num = 1;
+	#endif
+	#ifdef SPIN2_OBJECT_CREATED			
+	if (_pspin == &SPIN2) _spi_num = 2;
+	#endif
 
 	_pspin->begin();
 #ifdef KINETISK
@@ -2497,9 +2560,20 @@ size_t ILI9341_t3n::write(uint8_t c)
 		} else {
 			drawFontChar(c);
 		}
+	} else if (gfxFont)  {
+		if (c == '\n') {
+            cursor_y += (int16_t)textsize_y * gfxFont->yAdvance;
+			if(scrollEnable && isWritingScrollArea){
+				cursor_x  = scroll_x;
+			}else{
+				cursor_x  = 0;
+			}
+		} else {
+			drawGFXFontChar(c);
+		}
 	} else {
 		if (c == '\n') {
-			cursor_y += textsize*8;
+			cursor_y += textsize_y*8;
 			if(scrollEnable && isWritingScrollArea){
 				cursor_x  = scroll_x;
 			}else{
@@ -2508,19 +2582,19 @@ size_t ILI9341_t3n::write(uint8_t c)
 		} else if (c == '\r') {
 			// skip em
 		} else {
-			if(scrollEnable && isWritingScrollArea && (cursor_y > (scroll_y+scroll_height - textsize*8))){
-				scrollTextArea(textsize*8);
-				cursor_y -= textsize*8;
+			if(scrollEnable && isWritingScrollArea && (cursor_y > (scroll_y+scroll_height - textsize_y*8))){
+				scrollTextArea(textsize_y*8);
+				cursor_y -= textsize_y*8;
 				cursor_x = scroll_x;
 			}
-			drawChar(cursor_x, cursor_y, c, textcolor, textbgcolor, textsize);
-			cursor_x += textsize*6;
-			if(wrap && scrollEnable && isWritingScrollArea && (cursor_x > (scroll_x+scroll_width - textsize*6))){
-				cursor_y += textsize*8;
+			drawChar(cursor_x, cursor_y, c, textcolor, textbgcolor, textsize_x, textsize_y);
+			cursor_x += textsize_x*6;
+			if(wrap && scrollEnable && isWritingScrollArea && (cursor_x > (scroll_x+scroll_width - textsize_x*6))){
+				cursor_y += textsize_y*8;
 				cursor_x = scroll_x;
 			}
-			else if (wrap && (cursor_x > (_width - textsize*6))) {
-				cursor_y += textsize*8;
+			else if (wrap && (cursor_x > (_width - textsize_x*6))) {
+				cursor_y += textsize_y*6;
 				cursor_x = 0;
 			}
 		}
@@ -2530,17 +2604,18 @@ size_t ILI9341_t3n::write(uint8_t c)
 
 // Draw a character
 void ILI9341_t3n::drawChar(int16_t x, int16_t y, unsigned char c,
-			    uint16_t fgcolor, uint16_t bgcolor, uint8_t size)
+			    uint16_t fgcolor, uint16_t bgcolor, uint8_t size_x, uint8_t size_y)
 {
 	if((x >= _width)            || // Clip right
 	   (y >= _height)           || // Clip bottom
-	   ((x + 6 * size - 1) < 0) || // Clip left  TODO: is this correct?
-	   ((y + 8 * size - 1) < 0))   // Clip top   TODO: is this correct?
+	   ((x + 6 * size_x - 1) < 0) || // Clip left  TODO: is this correct?
+	   ((y + 8 * size_y - 1) < 0))   // Clip top   TODO: is this correct?
 		return;
 
+//	Serial.printf("drawchar %d %d %c %x %x %d %d\n", x, y, c, fgcolor, bgcolor, size_x, size_y);
 	if (fgcolor == bgcolor) {
 		// This transparent approach is only about 20% faster
-		if (size == 1) {
+		if ((size_x == 1) && (size_y == 1)) {
 			uint8_t mask = 0x01;
 			int16_t xoff, yoff;
 			for (yoff=0; yoff < 8; yoff++) {
@@ -2590,26 +2665,26 @@ void ILI9341_t3n::drawChar(int16_t x, int16_t y, unsigned char c,
 				xoff = 0;
 				while (line) {
 					if (line == 0x1F) {
-						fillRect(x + xoff * size, y + yoff * size,
-							5 * size, size, fgcolor);
+						fillRect(x + xoff * size_x, y + yoff * size_y,
+							5 * size_x, size_y, fgcolor);
 						break;
 					} else if (line == 0x1E) {
-						fillRect(x + xoff * size, y + yoff * size,
-							4 * size, size, fgcolor);
+						fillRect(x + xoff * size_x, y + yoff * size_y,
+							4 * size_x, size_y, fgcolor);
 						break;
 					} else if ((line & 0x1C) == 0x1C) {
-						fillRect(x + xoff * size, y + yoff * size,
-							3 * size, size, fgcolor);
+						fillRect(x + xoff * size_x, y + yoff * size_y,
+							3 * size_x, size_y, fgcolor);
 						line <<= 4;
 						xoff += 4;
 					} else if ((line & 0x18) == 0x18) {
-						fillRect(x + xoff * size, y + yoff * size,
-							2 * size, size, fgcolor);
+						fillRect(x + xoff * size_x, y + yoff * size_y,
+							2 * size_x, size_y, fgcolor);
 						line <<= 3;
 						xoff += 3;
 					} else if ((line & 0x10) == 0x10) {
-						fillRect(x + xoff * size, y + yoff * size,
-							size, size, fgcolor);
+						fillRect(x + xoff * size_x, y + yoff * size_y,
+							size_x, size_y, fgcolor);
 						line <<= 2;
 						xoff += 2;
 					} else {
@@ -2634,8 +2709,8 @@ void ILI9341_t3n::drawChar(int16_t x, int16_t y, unsigned char c,
 
 		if((x >= _displayclipx2)            || // Clip right
 			 (y >= _displayclipy2)           || // Clip bottom
-			 ((x + 6 * size - 1) < _displayclipx1) || // Clip left  TODO: this is not correct
-			 ((y + 8 * size - 1) < _displayclipy1))   // Clip top   TODO: this is not correct
+			 ((x + 6 * size_x - 1) < _displayclipx1) || // Clip left  TODO: this is not correct
+			 ((y + 8 * size_y - 1) < _displayclipy1))   // Clip top   TODO: this is not correct
 			return;
 
 
@@ -2644,7 +2719,7 @@ void ILI9341_t3n::drawChar(int16_t x, int16_t y, unsigned char c,
 
 			uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
 			for (yc=0; (yc < 8) && (y < _displayclipy2); yc++) {
-				for (yr=0; (yr < size) && (y < _displayclipy2); yr++) {
+				for (yr=0; (yr < size_y) && (y < _displayclipy2); yr++) {
 					x = x_char_start; 		// get our first x position...
 					if (y >= _displayclipy1) {
 						uint16_t * pfbPixel = pfbPixel_row;
@@ -2654,7 +2729,7 @@ void ILI9341_t3n::drawChar(int16_t x, int16_t y, unsigned char c,
 							} else {
 								color = bgcolor;
 							}
-							for (xr=0; xr < size; xr++) {
+							for (xr=0; xr < size_x; xr++) {
 								if ((x >= _displayclipx1) && (x < _displayclipx2)) {
 									*pfbPixel = color;
 								}
@@ -2662,7 +2737,7 @@ void ILI9341_t3n::drawChar(int16_t x, int16_t y, unsigned char c,
 								x++;
 							}
 						}
-						for (xr=0; xr < size; xr++) {
+						for (xr=0; xr < size_x; xr++) {
 							if ((x >= _displayclipx1) && (x < _displayclipx2)) {
 								*pfbPixel = bgcolor;
 							}
@@ -2681,8 +2756,8 @@ void ILI9341_t3n::drawChar(int16_t x, int16_t y, unsigned char c,
 		{
 			// need to build actual pixel rectangle we will output into.
 			int16_t y_char_top = y;	// remember the y
-			int16_t w =  6 * size;
-			int16_t h = 8 * size;
+			int16_t w =  6 * size_x;
+			int16_t h = 8 * size_y;
 
 			if(x < _displayclipx1) {	w -= (_displayclipx1-x); x = _displayclipx1; 	}
 			if((x + w - 1) >= _displayclipx2)  w = _displayclipx2  - x;
@@ -2695,7 +2770,7 @@ void ILI9341_t3n::drawChar(int16_t x, int16_t y, unsigned char c,
 			y = y_char_top;	// restore the actual y.
 			writecommand_cont(ILI9341_RAMWR);
 			for (yc=0; (yc < 8) && (y < _displayclipy2); yc++) {
-				for (yr=0; (yr < size) && (y < _displayclipy2); yr++) {
+				for (yr=0; (yr < size_y) && (y < _displayclipy2); yr++) {
 					x = x_char_start; 		// get our first x position...
 					if (y >= _displayclipy1) {
 						for (xc=0; xc < 5; xc++) {
@@ -2704,14 +2779,14 @@ void ILI9341_t3n::drawChar(int16_t x, int16_t y, unsigned char c,
 							} else {
 								color = bgcolor;
 							}
-							for (xr=0; xr < size; xr++) {
+							for (xr=0; xr < size_x; xr++) {
 								if ((x >= _displayclipx1) && (x < _displayclipx2)) {
 									writedata16_cont(color);
 								}
 								x++;
 							}
 						}
-						for (xr=0; xr < size; xr++) {
+						for (xr=0; xr < size_x; xr++) {
 							if ((x >= _displayclipx1) && (x < _displayclipx2)) {
 								writedata16_cont(bgcolor);
 							}
@@ -2730,6 +2805,10 @@ void ILI9341_t3n::drawChar(int16_t x, int16_t y, unsigned char c,
 
 void ILI9341_t3n::setFont(const ILI9341_t3_font_t &f) {
 	font = &f;
+	if (gfxFont) {
+        cursor_y -= 6;
+		gfxFont = NULL;
+	}
 	fontbpp = 1;
 	// Calculate additional metrics for Anti-Aliased font support (BDF extn v2.3)
 	if (font && font->version==23){
@@ -2742,6 +2821,54 @@ void ILI9341_t3n::setFont(const ILI9341_t3_font_t &f) {
 		if (textcolor == textbgcolor) textbgcolor = (textcolor==0x0000)?0xFFFF:0x0000;
 	}
 }
+
+// Maybe support GFX Fonts as well?
+void ILI9341_t3n::setFont(const GFXfont *f) {
+	font = NULL;	// turn off the other font... 
+	if (f == gfxFont) return;	// same font or lack of so can bail.
+
+    if(f) {            // Font struct pointer passed in?
+        if(!gfxFont) { // And no current font struct?
+            // Switching from classic to new font behavior.
+            // Move cursor pos down 6 pixels so it's on baseline.
+            cursor_y += 6;
+        }
+
+        // Test wondering high and low of Ys here... 
+        int8_t miny_offset = 0;
+#if 1
+        for (uint8_t i=0; i <= (f->last - f->first); i++) {
+        	if (f->glyph[i].yOffset < miny_offset) {
+        		miny_offset = f->glyph[i].yOffset;
+        	}
+        }
+#else        
+        int max_delta = 0;
+        uint8_t index_min = 0;
+        uint8_t index_max = 0;
+        for (uint8_t i=0; i <= (f->last - f->first); i++) {
+        	if (f->glyph[i].yOffset < miny_offset) {
+        		miny_offset = f->glyph[i].yOffset;
+        		index_min = i;
+        	}
+        	if ( (f->glyph[i].yOffset + f->glyph[i].height) > max_delta) {
+        		max_delta = (f->glyph[i].yOffset + f->glyph[i].height);
+        		index_max = i;
+        	}
+        }
+        Serial.printf("Set GFX Font(%x): Y %d %d(%c) %d(%c)\n", (uint32_t)f, f->yAdvance, miny_offset, index_min + f->first, 
+        	max_delta, index_max + f->first);
+#endif
+        _gfxFont_min_yOffset = miny_offset;	// Probably only thing we need... May cache? 
+
+    } else if(gfxFont) { // NULL passed.  Current font struct defined?
+        // Switching from new to classic font behavior.
+        // Move cursor pos up 6 pixels so it's at top-left of char.
+        cursor_y -= 6;
+    }
+    gfxFont = f;
+}
+
 
 static uint32_t fetchbit(const uint8_t *p, uint32_t index)
 {
@@ -3260,10 +3387,19 @@ void ILI9341_t3n::drawFontChar(unsigned int c)
 }
 
 //strPixelLen			- gets pixel length of given ASCII string
-int16_t ILI9341_t3n::strPixelLen(char * str)
+int16_t ILI9341_t3n::strPixelLen(const char * str)
 {
 //	//Serial.printf("strPixelLen %s\n", str);
 	if (!str) return(0);
+	if (gfxFont) 
+	{
+		// BUGBUG:: just use the other function for now... May do this for all of them...
+	  int16_t x, y;
+	  uint16_t w, h;
+	  getTextBounds(str, cursor_x, cursor_y, &x, &y, &w, &h);
+	  return w;
+	}
+
 	uint16_t len=0, maxlen=0;
 	while (*str)
 	{
@@ -3279,7 +3415,7 @@ int16_t ILI9341_t3n::strPixelLen(char * str)
 		{
 			if (!font)
 			{
-				len+=textsize*6;
+				len+=textsize_x*6;
 			}
 			else
 			{
@@ -3336,6 +3472,157 @@ int16_t ILI9341_t3n::strPixelLen(char * str)
 	return( maxlen );
 }
 
+void ILI9341_t3n::charBounds(char c, int16_t *x, int16_t *y,
+  int16_t *minx, int16_t *miny, int16_t *maxx, int16_t *maxy) {
+
+	// BUGBUG:: Not handling offset/clip
+    if (font) {
+        if(c == '\n') { // Newline?
+            *x  = 0;    // Reset x to zero, advance y by one line
+            *y += font->line_space;
+        } else if(c != '\r') { // Not a carriage return; is normal char
+			uint32_t bitoffset;
+			const uint8_t *data;
+			if (c >= font->index1_first && c <= font->index1_last) {
+				bitoffset = c - font->index1_first;
+				bitoffset *= font->bits_index;
+			} else if (c >= font->index2_first && c <= font->index2_last) {
+				bitoffset = c - font->index2_first + font->index1_last - font->index1_first + 1;
+				bitoffset *= font->bits_index;
+			} else if (font->unicode) {
+				return; // TODO: implement sparse unicode
+			} else {
+				return;
+			}
+			//Serial.printf("  index =  %d\n", fetchbits_unsigned(font->index, bitoffset, font->bits_index));
+			data = font->data + fetchbits_unsigned(font->index, bitoffset, font->bits_index);
+
+			uint32_t encoding = fetchbits_unsigned(data, 0, 3);
+			if (encoding != 0) return;
+			uint32_t width = fetchbits_unsigned(data, 3, font->bits_width);
+			bitoffset = font->bits_width + 3;
+			uint32_t height = fetchbits_unsigned(data, bitoffset, font->bits_height);
+			bitoffset += font->bits_height;
+			//Serial.printf("  size =   %d,%d\n", width, height);
+			//Serial.printf("  line space = %d\n", font->line_space);
+
+			int32_t xoffset = fetchbits_signed(data, bitoffset, font->bits_xoffset);
+			bitoffset += font->bits_xoffset;
+			int32_t yoffset = fetchbits_signed(data, bitoffset, font->bits_yoffset);
+			bitoffset += font->bits_yoffset;
+
+			uint32_t delta = fetchbits_unsigned(data, bitoffset, font->bits_delta);
+			bitoffset += font->bits_delta;
+
+            int16_t
+                    x1 = *x + xoffset,
+                    y1 = *y + yoffset,
+                    x2 = x1 + width,
+                    y2 = y1 + height;
+
+		    if(wrap && (x2 > _width)) {
+	            *x  = 0; // Reset x to zero, advance y by one line
+	            *y += font->line_space;
+	            x1 = *x + xoffset,
+	            y1 = *y + yoffset,
+	            x2 = x1 + width,
+	            y2 = y1 + height;
+        	}
+            if(x1 < *minx) *minx = x1;
+            if(y1 < *miny) *miny = y1;
+            if(x2 > *maxx) *maxx = x2;
+            if(y2 > *maxy) *maxy = y2;
+            *x += delta;	// ? guessing here...
+        }
+    } 
+
+    else if(gfxFont) {
+
+        if(c == '\n') { // Newline?
+            *x  = 0;    // Reset x to zero, advance y by one line
+            *y += textsize_y * gfxFont->yAdvance;
+        } else if(c != '\r') { // Not a carriage return; is normal char
+            uint8_t first = gfxFont->first,
+                    last  = gfxFont->last;
+            if((c >= first) && (c <= last)) { // Char present in this font?
+    			GFXglyph *glyph  = gfxFont->glyph + (c - first);
+                uint8_t gw = glyph->width,
+                        gh = glyph->height,
+                        xa = glyph->xAdvance;
+                int8_t  xo = glyph->xOffset,
+                        yo = glyph->yOffset;
+                if(wrap && ((*x+(((int16_t)xo+gw)*textsize_x)) > _width)) {
+                    *x  = 0; // Reset x to zero, advance y by one line
+                    *y += textsize_y * gfxFont->yAdvance;
+                }
+                int16_t tsx = (int16_t)textsize_x,
+                        tsy = (int16_t)textsize_y,
+                        x1 = *x + xo * tsx,
+                        y1 = *y + yo * tsy,
+                        x2 = x1 + gw * tsx - 1,
+                        y2 = y1 + gh * tsy - 1;
+                if(x1 < *minx) *minx = x1;
+                if(y1 < *miny) *miny = y1;
+                if(x2 > *maxx) *maxx = x2;
+                if(y2 > *maxy) *maxy = y2;
+                *x += xa * tsx;
+            }
+        }
+
+    } else { // Default font
+
+        if(c == '\n') {                     // Newline?
+            *x  = 0;                        // Reset x to zero,
+            *y += textsize_y * 8;           // advance y one line
+            // min/max x/y unchaged -- that waits for next 'normal' character
+        } else if(c != '\r') {  // Normal char; ignore carriage returns
+            if(wrap && ((*x + textsize_x * 6) > _width)) { // Off right?
+                *x  = 0;                    // Reset x to zero,
+                *y += textsize_y * 8;       // advance y one line
+            }
+            int x2 = *x + textsize_x * 6 - 1, // Lower-right pixel of char
+                y2 = *y + textsize_y * 8 - 1;
+            if(x2 > *maxx) *maxx = x2;      // Track max x, y
+            if(y2 > *maxy) *maxy = y2;
+            if(*x < *minx) *minx = *x;      // Track min x, y
+            if(*y < *miny) *miny = *y;
+            *x += textsize_x * 6;             // Advance x one char
+        }
+    }
+}
+
+// Add in Adafruit versions of text bounds calculations. 
+void ILI9341_t3n::getTextBounds(const char *str, int16_t x, int16_t y,
+        int16_t *x1, int16_t *y1, uint16_t *w, uint16_t *h) {
+    uint8_t c; // Current character
+
+    *x1 = x;
+    *y1 = y;
+    *w  = *h = 0;
+
+    int16_t minx = _width, miny = _height, maxx = -1, maxy = -1;
+
+    while((c = *str++))
+        charBounds(c, &x, &y, &minx, &miny, &maxx, &maxy);
+
+    if(maxx >= minx) {
+        *x1 = minx;
+        *w  = maxx - minx + 1;
+    }
+    if(maxy >= miny) {
+        *y1 = miny;
+        *h  = maxy - miny + 1;
+    }
+}
+
+void ILI9341_t3n::getTextBounds(const String &str, int16_t x, int16_t y,
+        int16_t *x1, int16_t *y1, uint16_t *w, uint16_t *h) {
+    if (str.length() != 0) {
+        getTextBounds(const_cast<char*>(str.c_str()), x, y, x1, y1, w, h);
+    }
+}
+
+
 void ILI9341_t3n::drawFontPixel( uint8_t alpha, uint32_t x, uint32_t y ){
 	// Adjust alpha based on the number of alpha levels supported by the font (based on bpp)
 	// Note: Implemented look-up table for alpha, but made absolutely no difference in speed (T3.6)
@@ -3391,6 +3678,269 @@ void ILI9341_t3n::drawFontBits(bool opaque, uint32_t bits, uint32_t numbits, int
 	}
 }
 
+void ILI9341_t3n::drawGFXFontChar(unsigned int c) {
+	// Lets do Adafruit GFX character output here as well
+    if(c == '\r') 	 return;
+
+    // Some quick and dirty tests to see if we can
+    uint8_t first = gfxFont->first;
+    if((c < first) || (c > gfxFont->last)) return; 
+
+    GFXglyph *glyph  = gfxFont->glyph + (c - first);
+    uint8_t   w     = glyph->width,
+              h     = glyph->height;
+    if((w == 0) || (h == 0))  return;  // Is there an associated bitmap?
+
+    int16_t xo = glyph->xOffset; // sic
+    int16_t yo = glyph->yOffset;
+
+    if(wrap && ((cursor_x + textsize_x * (xo + w)) > _width)) {
+        cursor_x  = 0;
+        cursor_y += (int16_t)textsize_y * gfxFont->yAdvance;
+    }
+
+    // Lets do the work to output the font character
+    uint8_t  *bitmap = gfxFont->bitmap;
+
+    uint16_t bo = glyph->bitmapOffset;
+    uint8_t  xx, yy, bits = 0, bit = 0;
+    //Serial.printf("DGFX_char: %c (%d,%d) : %u %u %u %u %d %d %x %x %d\n", c, cursor_x, cursor_y, w, h,  
+    //			glyph->xAdvance, gfxFont->yAdvance, xo, yo, textcolor, textbgcolor, _use_fbtft);Serial.flush();
+
+    if (textcolor == textbgcolor) {
+
+	    // Serial.printf("DGFXChar: %c %u, %u, wh:%d %d o:%d %d\n", c, cursor_x, cursor_y, w, h, xo, yo);
+	    // Todo: Add character clipping here
+
+    	// NOTE: Adafruit GFX does not support Opaque font output as there
+    	// are issues with proportionally spaced characters that may overlap
+    	// So the below is not perfect as we may overwrite a small portion 
+    	// of a letter with the next one, when we blank out... 
+    	// But: I prefer to let each of us decide if the limitations are
+    	// worth it or not.  If Not you still have the option to not
+    	// Do transparent mode and instead blank out and blink...
+
+	    for(yy=0; yy<h; yy++) {
+	        for(xx=0; xx<w; xx++) {
+	            if(!(bit++ & 7)) {
+	                bits = bitmap[bo++];
+	            }
+	            if(bits & 0x80) {
+	                if((textsize_x == 1) && (textsize_y == 1)){
+	                    drawPixel(cursor_x+xo+xx, cursor_y+yo+yy, textcolor);
+	                } else {
+	                fillRect(cursor_x+(xo+xx)*textsize_x, cursor_y+(yo+yy)*textsize_y,
+	                      textsize_x, textsize_y, textcolor);
+	                }
+	            }
+	            bits <<= 1;
+	        }
+	    }
+	} else {
+		// To Do, properly clipping and offsetting...
+		// This solid background approach is about 5 time faster
+		// Lets calculate bounding rectangle that we will update
+		// We need to offset by the origin.
+
+		// We are going direct so do some offsets and clipping
+		int16_t x_start = cursor_x + _originx;  // I am assuming no negative x offsets.
+		int16_t x_end = x_start + (glyph->xAdvance * textsize_x);
+		if (glyph->xAdvance < (xo + w)) x_end = x_start + ((xo + w)* textsize_x);  // BUGBUG Overlflows into next char position.
+		int16_t x;
+		int16_t x_left_fill = x_start + xo * textsize_x;
+
+		int16_t y_start = cursor_y + _originy + (_gfxFont_min_yOffset * textsize_y);  // UP to most negative value.
+		int16_t y_end = y_start +  gfxFont->yAdvance * textsize_y;  // how far we will update
+		int16_t y = y_start;
+		int8_t y_top_fill = (yo - _gfxFont_min_yOffset) * textsize_y;	 // both negative like -10 - -16 = 6...
+
+		// See if anything is within clip rectangle, if not bail
+		if((x_start >= _displayclipx2)   || // Clip right
+			 (y_start >= _displayclipy2) || // Clip bottom
+			 (x_end < _displayclipx1)    || // Clip left
+			 (y_end < _displayclipy1))  	// Clip top 
+		{
+			// But remember to first update the cursor position
+			cursor_x += glyph->xAdvance * (int16_t)textsize_x;
+			return;
+		}
+
+		// If our y_end > _displayclipy2 set it to _displayclipy2 as to not have to test both  Likewise X
+		if (y_end > _displayclipy2) y_end = _displayclipy2;
+		if (x_end > _displayclipx2) x_end = _displayclipx2;
+
+
+		#ifdef ENABLE_ILI9341_FRAMEBUFFER
+		if (_use_fbtft) {
+			// lets try to output the values directly...
+			uint16_t * pfbPixel_row = &_pfbtft[ y_start *_width + x_start];
+			uint16_t * pfbPixel;
+			// First lets fill in the top parts above the actual rectangle...
+			while (y_top_fill--) {
+				pfbPixel = pfbPixel_row;
+				if ( (y >= _displayclipy1) && (y < _displayclipy2)) {
+					for (int16_t xx = x_start; xx < x_end; xx++) {
+						if (xx >= _displayclipx1) {
+							*pfbPixel = textbgcolor;
+						}
+						pfbPixel++;
+					}					
+				}
+				pfbPixel_row += _width;
+				y++;
+			}
+			// Now lets output all of the pixels for each of the rows.. 
+			for(yy=0; (yy<h) && (y < _displayclipy2); yy++) {
+				uint16_t bo_save = bo;
+				uint8_t bit_save = bit;
+				uint8_t bits_save = bits;
+				for (uint8_t yts = 0; (yts < textsize_y) && (y < _displayclipy2); yts++) {
+					pfbPixel = pfbPixel_row;
+					// need to repeat the stuff for each row...
+					bo = bo_save;
+					bit = bit_save;
+					bits = bits_save;
+					x = x_start;
+					if (y >= _displayclipy1) {
+						while (x < x_left_fill) {
+							if ( (x >= _displayclipx1) && (x < _displayclipx2)) {
+								*pfbPixel = textbgcolor;
+							}
+							pfbPixel++;
+							x++;
+
+						}
+				        for(xx=0; xx<w; xx++) {
+				            if(!(bit++ & 7)) {
+				                bits = bitmap[bo++];
+				            }
+				            uint16_t color = (bits & 0x80)? textcolor : textbgcolor;
+				            for (uint8_t xts = 0; xts < textsize_x; xts++) {
+								if ( (x >= _displayclipx1) && (x < _displayclipx2)) {
+				            		*pfbPixel = color;
+				            	}
+								pfbPixel++;
+				            	x++;	// remember our logical position...
+				            }
+				            bits <<= 1;
+				        }
+				        // Fill in any additional bg colors to right of our output
+				        while (x++ < x_end) {
+							if (x >= _displayclipx1) {
+				        		*pfbPixel = textbgcolor;
+				        	}
+							pfbPixel++;
+				        }
+				    }
+			        y++;	// remember which row we just output
+					pfbPixel_row += _width;
+			    }
+		    }
+		    // And output any more rows below us...
+			while (y < y_end) {
+				if (y >= _displayclipy1) {
+					pfbPixel = pfbPixel_row;
+					for (int16_t xx = x_start; xx < x_end; xx++) {
+						if (xx >= _displayclipx1) {
+			        		*pfbPixel = textbgcolor;
+			        	}
+						pfbPixel++;
+					}					
+				}
+				pfbPixel_row += _width;
+				y++;
+			}
+
+		} else 
+		#endif
+		{
+			// lets try to output text in one output rectangle
+			//Serial.printf("    SPI (%d %d) (%d %d)\n", x_start, y_start, x_end, y_end);Serial.flush();
+			// compute the actual region we will output given 
+			beginSPITransaction();
+		
+			setAddr((x_start >= _displayclipx1) ? x_start : _displayclipx1, 
+					(y_start >= _displayclipy1) ? y_start : _displayclipy1, 
+					x_end  - 1,  y_end - 1); 
+			writecommand_cont(ILI9341_RAMWR);
+			//Serial.printf("SetAddr: %u %u %u %u\n", (x_start >= _displayclipx1) ? x_start : _displayclipx1, 
+			//		(y_start >= _displayclipy1) ? y_start : _displayclipy1, 
+			//		x_end  - 1,  y_end - 1); 
+			// First lets fill in the top parts above the actual rectangle...
+			//Serial.printf("    y_top_fill %d x_left_fill %d\n", y_top_fill, x_left_fill);
+			while (y_top_fill--) {
+				if ( (y >= _displayclipy1) && (y < _displayclipy2)) {
+					for (int16_t xx = x_start; xx < x_end; xx++) {
+						if (xx >= _displayclipx1) {
+							writedata16_cont(textbgcolor);
+						}
+					}					
+				}
+				y++;
+			}
+			//Serial.println("    After top fill"); Serial.flush();
+			// Now lets output all of the pixels for each of the rows.. 
+			for(yy=0; (yy<h) && (y < _displayclipy2); yy++) {
+				uint16_t bo_save = bo;
+				uint8_t bit_save = bit;
+				uint8_t bits_save = bits;
+				for (uint8_t yts = 0; (yts < textsize_y) && (y < _displayclipy2); yts++) {
+					// need to repeat the stuff for each row...
+					bo = bo_save;
+					bit = bit_save;
+					bits = bits_save;
+					x = x_start;
+					if (y >= _displayclipy1) {
+						while (x < x_left_fill) {
+							if ( (x >= _displayclipx1) && (x < _displayclipx2)) {
+								writedata16_cont(textbgcolor);
+							}
+							x++;
+						}
+				        for(xx=0; xx<w; xx++) {
+				            if(!(bit++ & 7)) {
+				                bits = bitmap[bo++];
+				            }
+				            uint16_t color = (bits & 0x80)? textcolor : textbgcolor;
+				            for (uint8_t xts = 0; xts < textsize_x; xts++) {
+								if ( (x >= _displayclipx1) && (x < _displayclipx2)) {
+									writedata16_cont(color);
+								}
+				            	x++;	// remember our logical position...
+				            }
+				            bits <<= 1;
+				        }
+				        // Fill in any additional bg colors to right of our output
+				        while (x < x_end) {
+							if (x >= _displayclipx1) {
+				        		writedata16_cont(textbgcolor);
+				        	}
+				        	x++;
+				        }
+			    	}
+		        	y++;	// remember which row we just output
+			    }
+		    }
+		    // And output any more rows below us...
+		    //Serial.println("    Bottom fill"); Serial.flush();
+			while (y < y_end) {
+				if (y >= _displayclipy1) {
+					for (int16_t xx = x_start; xx < x_end; xx++) {
+						if (xx >= _displayclipx1)  {
+							writedata16_cont(textbgcolor);
+						}
+					}
+				}
+				y++;
+			}
+			writecommand_last(ILI9341_NOP);
+			endSPITransaction();
+		}
+	}
+
+    cursor_x += glyph->xAdvance * (int16_t)textsize_x;
+}
+
 void ILI9341_t3n::setCursor(int16_t x, int16_t y) {
 	if (x < 0) x = 0;
 	else if (x >= _width) x = _width - 1;
@@ -3411,12 +3961,13 @@ void ILI9341_t3n::getCursor(int16_t *x, int16_t *y) {
   *y = cursor_y;
 }
 
-void ILI9341_t3n::setTextSize(uint8_t s) {
-  textsize = (s > 0) ? s : 1;
+void ILI9341_t3n::setTextSize(uint8_t s_x, uint8_t s_y) {
+    textsize_x = (s_x > 0) ? s_x : 1;
+    textsize_y = (s_y > 0) ? s_y : 1;
 }
 
 uint8_t ILI9341_t3n::getTextSize() {
-	return textsize;
+	return textsize_x;  // BUGBUG:: two values now...
 }
 
 void ILI9341_t3n::setTextColor(uint16_t c) {
@@ -3566,7 +4117,7 @@ int16_t ILI9341_t3n::drawString1(char string[], int16_t len, int poX, int poY)
   uint8_t padding = 1/*, baseline = 0*/;
   
   uint16_t cwidth = strPixelLen(string); // Find the pixel width of the string in the font
-  uint16_t cheight = textsize*8;
+  uint16_t cheight = textsize_y*6;
 
   
   if (textdatum || padX)
@@ -3633,7 +4184,7 @@ int16_t ILI9341_t3n::drawString1(char string[], int16_t len, int poX, int poY)
   }
   if(font == NULL){
 	  for(uint8_t i = 0; i < len-2; i++){
-		drawChar((int16_t) (poX+sumX), (int16_t) poY, string[i], textcolor, textbgcolor, textsize);
+		drawChar((int16_t) (poX+sumX), (int16_t) poY, string[i], textcolor, textbgcolor, textsize_x, textsize_y);
 		sumX += cwidth/(len-2) + padding;
 	  }
   } else {
@@ -3679,50 +4230,4 @@ void ILI9341_t3n::disableScroll(void){
 void ILI9341_t3n::resetScrollBackgroundColor(uint16_t color){
 	scrollbgcolor=color;
 }	
-
-void Adafruit_GFX_Button::initButton(ILI9341_t3n *gfx,
-	int16_t x, int16_t y, uint8_t w, uint8_t h,
-	uint16_t outline, uint16_t fill, uint16_t textcolor,
-	const char *label, uint8_t textsize)
-{
-	_x = x;
-	_y = y;
-	_w = w;
-	_h = h;
-	_outlinecolor = outline;
-	_fillcolor = fill;
-	_textcolor = textcolor;
-	_textsize = textsize;
-	_gfx = gfx;
-	strncpy(_label, label, 9);
-	_label[9] = 0;
-}
-
-void Adafruit_GFX_Button::drawButton(bool inverted)
-{
-	uint16_t fill, outline, text;
-
-	if (! inverted) {
-		fill = _fillcolor;
-		outline = _outlinecolor;
-		text = _textcolor;
-	} else {
-		fill =  _textcolor;
-		outline = _outlinecolor;
-		text = _fillcolor;
-	}
-	_gfx->fillRoundRect(_x - (_w/2), _y - (_h/2), _w, _h, min(_w,_h)/4, fill);
-	_gfx->drawRoundRect(_x - (_w/2), _y - (_h/2), _w, _h, min(_w,_h)/4, outline);
-	_gfx->setCursor(_x - strlen(_label)*3*_textsize, _y-4*_textsize);
-	_gfx->setTextColor(text);
-	_gfx->setTextSize(_textsize);
-	_gfx->print(_label);
-}
-
-bool Adafruit_GFX_Button::contains(int16_t x, int16_t y)
-{
-	if ((x < (_x - _w/2)) || (x > (_x + _w/2))) return false;
-	if ((y < (_y - _h/2)) || (y > (_y + _h/2))) return false;
-	return true;
-}
 
