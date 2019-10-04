@@ -3737,22 +3737,52 @@ void ILI9341_t3n::drawGFXFontChar(unsigned int c) {
     	// But: I prefer to let each of us decide if the limitations are
     	// worth it or not.  If Not you still have the option to not
     	// Do transparent mode and instead blank out and blink...
-
 	    for(yy=0; yy<h; yy++) {
-	        for(xx=0; xx<w; xx++) {
-	            if(!(bit++ & 7)) {
+	    	uint8_t w_left = w;
+	    	xx = 0;
+	        while (w_left) {
+	            if(!(bit & 7)) {
 	                bits = bitmap[bo++];
 	            }
-	            if(bits & 0x80) {
-	                if((textsize_x == 1) && (textsize_y == 1)){
-	                    drawPixel(cursor_x+xo+xx, cursor_y+yo+yy, textcolor);
-	                } else {
+	            // Could try up to 8 bits at time, but start off trying up to 4
+	            uint8_t xCount;
+	            if ((w_left >= 8) && ((bits & 0xff) == 0xff)) {
+	            	xCount = 8;
+	            	//Serial.print("8");
 	                fillRect(cursor_x+(xo+xx)*textsize_x, cursor_y+(yo+yy)*textsize_y,
-	                      textsize_x, textsize_y, textcolor);
-	                }
+	                      xCount * textsize_x, textsize_y, textcolor);
+	            } else if ((w_left >= 4) && ((bits & 0xf0) == 0xf0)) {
+	            	xCount = 4;
+	            	//Serial.print("4");
+	                fillRect(cursor_x+(xo+xx)*textsize_x, cursor_y+(yo+yy)*textsize_y,
+	                      xCount * textsize_x, textsize_y, textcolor);
+	            } else if ((w_left >= 3) && ((bits & 0xe0) == 0xe0)) {
+	            	//Serial.print("3");
+	            	xCount = 3;
+	                fillRect(cursor_x+(xo+xx)*textsize_x, cursor_y+(yo+yy)*textsize_y,
+	                      xCount * textsize_x, textsize_y, textcolor);
+	            } else if ((w_left >= 2) && ((bits & 0xc0) == 0xc0)) {
+	            	//Serial.print("2");
+	            	xCount = 2;
+	                fillRect(cursor_x+(xo+xx)*textsize_x, cursor_y+(yo+yy)*textsize_y,
+	                      xCount * textsize_x, textsize_y, textcolor);
+	            } else {
+	            	xCount = 1;
+	            	if(bits & 0x80) {
+		                if((textsize_x == 1) && (textsize_y == 1)){
+		                    drawPixel(cursor_x+xo+xx, cursor_y+yo+yy, textcolor);
+		                } else {
+		                fillRect(cursor_x+(xo+xx)*textsize_x, cursor_y+(yo+yy)*textsize_y,
+		                      textsize_x, textsize_y, textcolor);
+		                }
+		            }
 	            }
-	            bits <<= 1;
+	            xx += xCount;
+	            w_left -= xCount;
+	            bit += xCount;
+	            bits <<= xCount;
 	        }
+
 	    }
     	_gfx_last_char_x_write = 0;
 	} else {
