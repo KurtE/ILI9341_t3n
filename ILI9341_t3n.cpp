@@ -2836,6 +2836,13 @@ void ILI9341_t3n::setFont(const GFXfont *f) {
 
         // Test wondering high and low of Ys here... 
         int8_t miny_offset = 0;
+#if 1
+        for (uint8_t i=0; i <= (f->last - f->first); i++) {
+        	if (f->glyph[i].yOffset < miny_offset) {
+        		miny_offset = f->glyph[i].yOffset;
+        	}
+        }
+#else        
         int max_delta = 0;
         uint8_t index_min = 0;
         uint8_t index_max = 0;
@@ -2851,7 +2858,9 @@ void ILI9341_t3n::setFont(const GFXfont *f) {
         }
         Serial.printf("Set GFX Font(%x): Y %d %d(%c) %d(%c)\n", (uint32_t)f, f->yAdvance, miny_offset, index_min + f->first, 
         	max_delta, index_max + f->first);
+#endif
         _gfxFont_min_yOffset = miny_offset;	// Probably only thing we need... May cache? 
+
     } else if(gfxFont) { // NULL passed.  Current font struct defined?
         // Switching from new to classic font behavior.
         // Move cursor pos up 6 pixels so it's at top-left of char.
