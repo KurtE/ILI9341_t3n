@@ -2836,13 +2836,6 @@ void ILI9341_t3n::setFont(const GFXfont *f) {
 
         // Test wondering high and low of Ys here... 
         int8_t miny_offset = 0;
-#if 1
-        for (uint8_t i=0; i <= (f->last - f->first); i++) {
-        	if (f->glyph[i].yOffset < miny_offset) {
-        		miny_offset = f->glyph[i].yOffset;
-        	}
-        }
-#else        
         int max_delta = 0;
         uint8_t index_min = 0;
         uint8_t index_max = 0;
@@ -2858,9 +2851,7 @@ void ILI9341_t3n::setFont(const GFXfont *f) {
         }
         Serial.printf("Set GFX Font(%x): Y %d %d(%c) %d(%c)\n", (uint32_t)f, f->yAdvance, miny_offset, index_min + f->first, 
         	max_delta, index_max + f->first);
-#endif
         _gfxFont_min_yOffset = miny_offset;	// Probably only thing we need... May cache? 
-
     } else if(gfxFont) { // NULL passed.  Current font struct defined?
         // Switching from new to classic font behavior.
         // Move cursor pos up 6 pixels so it's at top-left of char.
@@ -3550,7 +3541,7 @@ void ILI9341_t3n::charBounds(char c, int16_t *x, int16_t *y,
                         gh = glyph->height,
                         xa = glyph->xAdvance;
                 int8_t  xo = glyph->xOffset,
-                        yo = glyph->yOffset;
+                        yo = glyph->yOffset + gfxFont->yAdvance/2;
                 if(wrap && ((*x+(((int16_t)xo+gw)*textsize_x)) > _width)) {
                     *x  = 0; // Reset x to zero, advance y by one line
                     *y += textsize_y * gfxFont->yAdvance;
@@ -3692,7 +3683,7 @@ void ILI9341_t3n::drawGFXFontChar(unsigned int c) {
     if((w == 0) || (h == 0))  return;  // Is there an associated bitmap?
 
     int16_t xo = glyph->xOffset; // sic
-    int16_t yo = glyph->yOffset;
+    int16_t yo = glyph->yOffset + gfxFont->yAdvance/2;
 
     if(wrap && ((cursor_x + textsize_x * (xo + w)) > _width)) {
         cursor_x  = 0;
@@ -3749,10 +3740,12 @@ void ILI9341_t3n::drawGFXFontChar(unsigned int c) {
 		int16_t x;
 		int16_t x_left_fill = x_start + xo * textsize_x;
 
-		int16_t y_start = cursor_y + _originy + (_gfxFont_min_yOffset * textsize_y);  // UP to most negative value.
+		int16_t y_start = cursor_y + _originy + (_gfxFont_min_yOffset * textsize_y)+ gfxFont->yAdvance*textsize_y/2;  // UP to most negative value.
 		int16_t y_end = y_start +  gfxFont->yAdvance * textsize_y;  // how far we will update
 		int16_t y = y_start;
-		int8_t y_top_fill = (yo - _gfxFont_min_yOffset) * textsize_y;	 // both negative like -10 - -16 = 6...
+		//int8_t y_top_fill = (yo - _gfxFont_min_yOffset) * textsize_y;	 // both negative like -10 - -16 = 6...
+		int8_t y_top_fill = (yo - gfxFont->yAdvance/2 - _gfxFont_min_yOffset) * textsize_y;
+
 
 		// See if anything is within clip rectangle, if not bail
 		if((x_start >= _displayclipx2)   || // Clip right
