@@ -2805,6 +2805,7 @@ void ILI9341_t3n::drawChar(int16_t x, int16_t y, unsigned char c,
 
 void ILI9341_t3n::setFont(const ILI9341_t3_font_t &f) {
 	font = &f;
+	_gfx_last_char_x_write = 0;	// Don't use cached data here
 	if (gfxFont) {
         cursor_y -= 6;
 		gfxFont = NULL;
@@ -2825,6 +2826,7 @@ void ILI9341_t3n::setFont(const ILI9341_t3_font_t &f) {
 // Maybe support GFX Fonts as well?
 void ILI9341_t3n::setFont(const GFXfont *f) {
 	font = NULL;	// turn off the other font... 
+	_gfx_last_char_x_write = 0;	// Don't use cached data here
 	if (f == gfxFont) return;	// same font or lack of so can bail.
 
     if(f) {            // Font struct pointer passed in?
@@ -2846,18 +2848,34 @@ void ILI9341_t3n::setFont(const GFXfont *f) {
         int max_delta = 0;
         uint8_t index_min = 0;
         uint8_t index_max = 0;
+
+        int8_t minx_offset = 127;
+        int8_t maxx_overlap = 0;
+        uint8_t indexx_min = 0;
+        uint8_t indexx_max = 0;
         for (uint8_t i=0; i <= (f->last - f->first); i++) {
         	if (f->glyph[i].yOffset < miny_offset) {
         		miny_offset = f->glyph[i].yOffset;
         		index_min = i;
         	}
+
+        	if (f->glyph[i].xOffset < minx_offset) {
+        		minx_offset = f->glyph[i].xOffset;
+        		indexx_min = i;
+        	}
         	if ( (f->glyph[i].yOffset + f->glyph[i].height) > max_delta) {
         		max_delta = (f->glyph[i].yOffset + f->glyph[i].height);
         		index_max = i;
         	}
+        	int8_t x_overlap = f->glyph[i].xOffset + f->glyph[i].width - f->glyph[i].xAdvance;
+        	if (x_overlap > maxx_overlap) {
+        		maxx_overlap = x_overlap;
+        		indexx_max = i;
+        	}
         }
-        Serial.printf("Set GFX Font(%x): Y %d %d(%c) %d(%c)\n", (uint32_t)f, f->yAdvance, miny_offset, index_min + f->first, 
-        	max_delta, index_max + f->first);
+        Serial.printf("Set GFX Font(%x): Y: %d %d(%c) %d(%c) X: %d(%c) %d(%c)\n", (uint32_t)f, f->yAdvance, 
+        	miny_offset, index_min + f->first, max_delta, index_max + f->first,
+        	minx_offset, indexx_min + f->first, maxx_overlap, indexx_max + f->first);
 #endif
         _gfxFont_min_yOffset = miny_offset;	// Probably only thing we need... May cache? 
 
@@ -3736,6 +3754,7 @@ void ILI9341_t3n::drawGFXFontChar(unsigned int c) {
 	            bits <<= 1;
 	        }
 	    }
+    	_gfx_last_char_x_write = 0;
 	} else {
 		// To Do, properly clipping and offsetting...
 		// This solid background approach is about 5 time faster
@@ -3743,18 +3762,25 @@ void ILI9341_t3n::drawGFXFontChar(unsigned int c) {
 		// We need to offset by the origin.
 
 		// We are going direct so do some offsets and clipping
-		int16_t x_start = cursor_x + _originx;  // I am assuming no negative x offsets.
-		int16_t x_end = x_start + (glyph->xAdvance * textsize_x);
-		if (glyph->xAdvance < (xo + w)) x_end = x_start + ((xo + w)* textsize_x);  // BUGBUG Overlflows into next char position.
+		int16_t x_offset_cursor = cursor_x + _originx;	// This is where the offseted cursor is.
+		int16_t x_start = x_offset_cursor;  // I am assuming no negative x offsets.
+		int16_t x_end = x_offset_cursor + (glyph->xAdvance * textsize_x);
+		if (glyph->xAdvance < (xo + w)) x_end = x_offset_cursor + ((xo + w)* textsize_x);  // BUGBUG Overlflows into next char position.
+		int16_t x_left_fill = x_offset_cursor + xo * textsize_x;
 		int16_t x;
-		int16_t x_left_fill = x_start + xo * textsize_x;
+
+		if (xo < 0) { 
+			// Unusual character that goes back into previous character
+			//Serial.printf("GFX Font char XO < 0: %c %d %d %u %u %u\n", c, xo, yo, w, h, glyph->xAdvance );
+			x_start += xo * textsize_x;
+			x_left_fill = 0;	// Don't need to fill anything here... 
+		}
 
 		int16_t y_start = cursor_y + _originy + (_gfxFont_min_yOffset * textsize_y)+ gfxFont->yAdvance*textsize_y/2;  // UP to most negative value.
 		int16_t y_end = y_start +  gfxFont->yAdvance * textsize_y;  // how far we will update
 		int16_t y = y_start;
 		//int8_t y_top_fill = (yo - _gfxFont_min_yOffset) * textsize_y;	 // both negative like -10 - -16 = 6...
 		int8_t y_top_fill = (yo - gfxFont->yAdvance/2 - _gfxFont_min_yOffset) * textsize_y;
-
 
 		// See if anything is within clip rectangle, if not bail
 		if((x_start >= _displayclipx2)   || // Clip right
@@ -3771,6 +3797,8 @@ void ILI9341_t3n::drawGFXFontChar(unsigned int c) {
 		if (y_end > _displayclipy2) y_end = _displayclipy2;
 		if (x_end > _displayclipx2) x_end = _displayclipx2;
 
+		// If we get here and 
+		if (_gfx_last_cursor_y != (cursor_y + _originy))  _gfx_last_char_x_write = 0;
 
 		#ifdef ENABLE_ILI9341_FRAMEBUFFER
 		if (_use_fbtft) {
@@ -3782,8 +3810,9 @@ void ILI9341_t3n::drawGFXFontChar(unsigned int c) {
 				pfbPixel = pfbPixel_row;
 				if ( (y >= _displayclipy1) && (y < _displayclipy2)) {
 					for (int16_t xx = x_start; xx < x_end; xx++) {
-						if (xx >= _displayclipx1) {
-							*pfbPixel = textbgcolor;
+						if ((xx >= _displayclipx1) && (xx >= x_offset_cursor)) {
+							if ((xx >= _gfx_last_char_x_write) || (*pfbPixel != _gfx_last_char_textcolor))
+								*pfbPixel = textbgcolor;
 						}
 						pfbPixel++;
 					}					
@@ -3806,7 +3835,8 @@ void ILI9341_t3n::drawGFXFontChar(unsigned int c) {
 					if (y >= _displayclipy1) {
 						while (x < x_left_fill) {
 							if ( (x >= _displayclipx1) && (x < _displayclipx2)) {
-								*pfbPixel = textbgcolor;
+								if ((x >= _gfx_last_char_x_write) || (*pfbPixel != _gfx_last_char_textcolor))
+									*pfbPixel = textbgcolor;
 							}
 							pfbPixel++;
 							x++;
@@ -3816,10 +3846,14 @@ void ILI9341_t3n::drawGFXFontChar(unsigned int c) {
 				            if(!(bit++ & 7)) {
 				                bits = bitmap[bo++];
 				            }
-				            uint16_t color = (bits & 0x80)? textcolor : textbgcolor;
 				            for (uint8_t xts = 0; xts < textsize_x; xts++) {
 								if ( (x >= _displayclipx1) && (x < _displayclipx2)) {
-				            		*pfbPixel = color;
+				            		if (bits & 0x80)
+				            			*pfbPixel = textcolor;
+				            		else if (x >= x_offset_cursor) {
+										if ((x >= _gfx_last_char_x_write) || (*pfbPixel != _gfx_last_char_textcolor))
+											*pfbPixel = textbgcolor;
+				            		}
 				            	}
 								pfbPixel++;
 				            	x++;	// remember our logical position...
@@ -3843,8 +3877,9 @@ void ILI9341_t3n::drawGFXFontChar(unsigned int c) {
 				if (y >= _displayclipy1) {
 					pfbPixel = pfbPixel_row;
 					for (int16_t xx = x_start; xx < x_end; xx++) {
-						if (xx >= _displayclipx1) {
-			        		*pfbPixel = textbgcolor;
+						if ((xx >= _displayclipx1) && (xx >= x_offset_cursor)) {
+							if ((xx >= _gfx_last_char_x_write) || (*pfbPixel != _gfx_last_char_textcolor))
+			        			*pfbPixel = textbgcolor;
 			        	}
 						pfbPixel++;
 					}					
@@ -3874,7 +3909,7 @@ void ILI9341_t3n::drawGFXFontChar(unsigned int c) {
 				if ( (y >= _displayclipy1) && (y < _displayclipy2)) {
 					for (int16_t xx = x_start; xx < x_end; xx++) {
 						if (xx >= _displayclipx1) {
-							writedata16_cont(textbgcolor);
+							writedata16_cont(gfxFontLastCharPosFG(xx,y)? _gfx_last_char_textcolor : (xx < x_offset_cursor)? _gfx_last_char_textbgcolor : textbgcolor);
 						}
 					}					
 				}
@@ -3894,8 +3929,9 @@ void ILI9341_t3n::drawGFXFontChar(unsigned int c) {
 					x = x_start;
 					if (y >= _displayclipy1) {
 						while (x < x_left_fill) {
-							if ( (x >= _displayclipx1) && (x < _displayclipx2)) {
-								writedata16_cont(textbgcolor);
+							if ( (x >= _displayclipx1) && (x < _displayclipx2) ) {
+								// Don't need to check if we are in previous char as in this case x_left_fill is set to 0...
+								writedata16_cont(gfxFontLastCharPosFG(x,y)? _gfx_last_char_textcolor :  textbgcolor);
 							}
 							x++;
 						}
@@ -3903,10 +3939,12 @@ void ILI9341_t3n::drawGFXFontChar(unsigned int c) {
 				            if(!(bit++ & 7)) {
 				                bits = bitmap[bo++];
 				            }
-				            uint16_t color = (bits & 0x80)? textcolor : textbgcolor;
 				            for (uint8_t xts = 0; xts < textsize_x; xts++) {
 								if ( (x >= _displayclipx1) && (x < _displayclipx2)) {
-									writedata16_cont(color);
+				            		if (bits & 0x80)
+										writedata16_cont(textcolor);
+									else 
+										writedata16_cont(gfxFontLastCharPosFG(x,y)? _gfx_last_char_textcolor : (x < x_offset_cursor)? _gfx_last_char_textbgcolor : textbgcolor);
 								}
 				            	x++;	// remember our logical position...
 				            }
@@ -3915,7 +3953,7 @@ void ILI9341_t3n::drawGFXFontChar(unsigned int c) {
 				        // Fill in any additional bg colors to right of our output
 				        while (x < x_end) {
 							if (x >= _displayclipx1) {
-				        		writedata16_cont(textbgcolor);
+								writedata16_cont(gfxFontLastCharPosFG(x,y)? _gfx_last_char_textcolor : (x < x_offset_cursor)? _gfx_last_char_textbgcolor : textbgcolor);
 				        	}
 				        	x++;
 				        }
@@ -3928,8 +3966,8 @@ void ILI9341_t3n::drawGFXFontChar(unsigned int c) {
 			while (y < y_end) {
 				if (y >= _displayclipy1) {
 					for (int16_t xx = x_start; xx < x_end; xx++) {
-						if (xx >= _displayclipx1)  {
-							writedata16_cont(textbgcolor);
+						if (xx >= _displayclipx1 ) {
+							writedata16_cont(gfxFontLastCharPosFG(xx,y)? _gfx_last_char_textcolor : (xx < x_offset_cursor)? _gfx_last_char_textbgcolor : textbgcolor);
 						}
 					}
 				}
@@ -3938,10 +3976,49 @@ void ILI9341_t3n::drawGFXFontChar(unsigned int c) {
 			writecommand_last(ILI9341_NOP);
 			endSPITransaction();
 		}
+		// Save away info about this last char
+		_gfx_c_last = c;
+		_gfx_last_cursor_x = cursor_x + _originx; 
+		_gfx_last_cursor_y = cursor_y + _originy;
+		_gfx_last_char_x_write = x_end;
+		_gfx_last_char_textcolor = textcolor;
+		_gfx_last_char_textbgcolor = textbgcolor;
 	}
 
     cursor_x += glyph->xAdvance * (int16_t)textsize_x;
 }
+
+// Some fonts overlap characters if we detect that the previous 
+// character wrote out more width than they advanced in X direction
+// we may want to know if the last character output a FG or BG at a position. 
+	// Opaque font chracter overlap?
+//	unsigned int _gfx_c_last;
+//	int16_t   _gfx_last_cursor_x, _gfx_last_cursor_y;
+//	int16_t	 _gfx_last_x_overlap = 0;
+	
+bool ILI9341_t3n::gfxFontLastCharPosFG(int16_t x, int16_t y) {
+    GFXglyph *glyph  = gfxFont->glyph + (_gfx_c_last -  gfxFont->first);
+
+    uint8_t   w     = glyph->width,
+              h     = glyph->height;
+
+
+    int16_t xo = glyph->xOffset; // sic
+    int16_t yo = glyph->yOffset + gfxFont->yAdvance/2;
+    if (x >= _gfx_last_char_x_write) return false; 	// we did not update here...
+    if (y < (_gfx_last_cursor_y + (yo*textsize_y)))  return false;  // above
+    if (y >= (_gfx_last_cursor_y + (yo+h)*textsize_y)) return false; // below
+
+
+    // Lets compute which Row this y is in the bitmap
+    int16_t y_bitmap = (y - ((_gfx_last_cursor_y + (yo*textsize_y))) + textsize_y - 1) / textsize_y;
+    int16_t x_bitmap = (x - ((_gfx_last_cursor_x + (xo*textsize_x))) + textsize_x - 1) / textsize_x;
+    uint16_t  pixel_bit_offset = y_bitmap * w + x_bitmap;
+
+    return ((gfxFont->bitmap[glyph->bitmapOffset + (pixel_bit_offset >> 3)]) & (0x80 >> (pixel_bit_offset & 0x7)));
+}
+
+
 
 void ILI9341_t3n::setCursor(int16_t x, int16_t y) {
 	if (x < 0) x = 0;
@@ -3956,6 +4033,8 @@ void ILI9341_t3n::setCursor(int16_t x, int16_t y) {
 	} else {
 		isWritingScrollArea = false;
 	}
+	_gfx_last_char_x_write = 0;	// Don't use cached data here
+
 }
 
 void ILI9341_t3n::getCursor(int16_t *x, int16_t *y) {
@@ -3966,6 +4045,7 @@ void ILI9341_t3n::getCursor(int16_t *x, int16_t *y) {
 void ILI9341_t3n::setTextSize(uint8_t s_x, uint8_t s_y) {
     textsize_x = (s_x > 0) ? s_x : 1;
     textsize_y = (s_y > 0) ? s_y : 1;
+	_gfx_last_char_x_write = 0;	// Don't use cached data here
 }
 
 uint8_t ILI9341_t3n::getTextSize() {
