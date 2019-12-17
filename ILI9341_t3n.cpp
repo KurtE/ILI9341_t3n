@@ -1972,6 +1972,7 @@ void ILI9341_t3n::begin(void)
 {
     // verify SPI pins are valid;
 	// allow user to say use current ones...
+	Serial.printf("_t3n::begin mosi:%d miso:%d SCLK:%d CS:%d DC:%d\n", _mosi, _miso, _sclk, _cs, _dc); Serial.flush();
 #ifdef DEBUG_ASYNC_UPDATE
 	//Serial.printf("????? _dmasettings[0] %x %x\n", (uint32_t)&_dmasettings[0], (uint32_t)_dmasettings[0].TCD); Serial.flush();
 #endif
@@ -1987,7 +1988,7 @@ void ILI9341_t3n::begin(void)
 #else
 				_pkinetisl_spi = &_pspin->port();
 #endif				
-				//Serial.println("ILI9341_t3n: SPIN1 automatically selected");
+				Serial.println("ILI9341_t3n: SPIN1 automatically selected");
 			} else {
 				#ifdef SPIN2_OBJECT_CREATED			
 				if (SPIN2.pinIsMOSI(_mosi) && SPIN2.pinIsMISO(_miso) && SPIN2.pinIsSCK(_sclk)) {
@@ -1999,7 +2000,7 @@ void ILI9341_t3n::begin(void)
 #else
 				_pkinetisl_spi = &_pspin->port();
 #endif				
-					//Serial.println("ILI9341_t3n: SPIN2 automatically selected");
+					Serial.println("ILI9341_t3n: SPIN2 automatically selected");
 				} else {
 				#endif
 			#endif
@@ -2068,6 +2069,7 @@ void ILI9341_t3n::begin(void)
 		}
 	}
 #elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x 
+	Serial.println("   T4 setup CS/DC"); Serial.flush();
 	_csport = portOutputRegister(_cs);
 	_cspinmask = digitalPinToBitMask(_cs);
 	pinMode(_cs, OUTPUT);	
@@ -2147,6 +2149,7 @@ void ILI9341_t3n::begin(void)
 	pinMode(DEBUG_PIN_2, OUTPUT);
 	pinMode(DEBUG_PIN_3, OUTPUT);
 #endif
+	Serial.println("_t3n::begin - completed"); Serial.flush();
 }
 
 
