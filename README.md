@@ -11,13 +11,20 @@ also adapted to allow this on the Teensy LC as well.
 
 SPIN
 ----
+
+This version no longer uses or requires my SPIN library. 
 Currently this library uses my SPIN library (https://github.com/KurtE/SPIN), which allows me to use different SPI busses.
 
-The constructor for the class now takes an optional pointer to a SPIN object, which defaults to SPIN which is for the SPI buss.  To use SPI1, pass in &SPIN1, and likewise for SPI2 buss pass in &SPIN2.  Note: there is also code in place that if you forget to update which SPIN object to use and the begin method finds that the passed in values for MISO/MOSI/SCK are not valid for the currently selected buss, it will see if those pins are valid on SPI1 or SPI2 and if so, will recover and set to use the appropriate SPIN object. 
+As such it no longer accepts a SPIN object to be passed in to the constructor. 
+
+However there is code in place that when the begin method is called.  The paremeters passed in for MISO/MOSI/SCK are 
+checked to see if they are valid for the SPI object.  If so SPI is used.  If not and the board type has SPI1, it will check to 
+see if those pins are valid for SPI1 and if so use SPI1, if not if there is an SPI2, it will check...
+
 
 In addition, this code allows the ILI9341 code to work with only one hardware CS pin available, 
 which in this case must be used for the DC pin.  This is very useful to support SPI1 on the new T3.5 and T3.6 boards which only
-have one CS pin unless you use some form of adapter to use the SPI pins that are on the SDCARD. 
+have one CS pin unless you use some form of adapter to use the SPI pins that are on the SDCARD.   
 
 Frame Buffer
 ------------

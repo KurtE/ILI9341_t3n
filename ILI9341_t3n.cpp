@@ -281,7 +281,7 @@ void ILI9341_t3n::process_dma_interrupt(void) {
 // Constructor when using hardware ILI9241_KINETISK__pspi->  Faster, but must use SPI pins
 // specific to each board type (e.g. 11,13 for Uno, 51,52 for Mega, etc.)
 ILI9341_t3n::ILI9341_t3n(uint8_t cs, uint8_t dc, uint8_t rst, 
-	uint8_t mosi, uint8_t sclk, uint8_t miso, SPINClass *pspin )
+	uint8_t mosi, uint8_t sclk, uint8_t miso)
 {
 	_cs   = cs;
 	_dc   = dc;
@@ -292,16 +292,6 @@ ILI9341_t3n::ILI9341_t3n(uint8_t cs, uint8_t dc, uint8_t rst,
 	_width    = WIDTH;
 	_height   = HEIGHT;
 
-#if 0
-	_pspin	  = pspin; 
-#ifdef KINETISK	
-	_pkinetisk_spi = &_pspin->port();
-#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
- 	_pimxrt_spi = &_pspin->port();
-#else
-	_pkinetisl_spi = &_pspin->port();
-#endif	
-#endif
 	rotation  = 0;
 	cursor_y  = cursor_x    = 0;
 	textsize_x = textsize_y  = 1;
@@ -524,7 +514,7 @@ void	ILI9341_t3n::initDMASettings(void)
 	_dmarx.TCD->ATTR_SRC = 1;
 	_dmarx.destination(_dma_dummy_rx);
 	_dmarx.disableOnCompletion();
-	_dmarx.triggerAtHardwareEvent(_pspin->dmaRXEvent());
+	_dmarx.triggerAtHardwareEvent( _spi_hardware->rx_dma_channel);
 	_dmarx.attachInterrupt(dmaInterrupt);
 	_dmarx.interruptAtCompletion();
 
@@ -536,7 +526,7 @@ void	ILI9341_t3n::initDMASettings(void)
 	_dmatx.TCD->ATTR_DST = 1;
 	_dmatx.disableOnCompletion();
 	// Current SPIN, has both RX/TX same for SPI1/2 so just know f
-	if (_pspin == &SPIN) {
+	if (_spi_num == 0) {
 		_dmatx.triggerAtHardwareEvent(dmaTXevent);
 		_dma_write_size_words = COUNT_WORDS_WRITE;
 	} else {
@@ -734,7 +724,7 @@ bool ILI9341_t3n::updateScreenAsync(bool update_cont)					// call to say update 
 	// Lets try to output the first byte to make sure that we are in 16 bit mode...
 	_pkinetisk_spi->PUSHR = *_pfbtft | SPI_PUSHR_CTAS(0) | SPI_PUSHR_CONT;	
 
-	if (_pspin == &SPIN) {
+	if (_spi_num == 0) {
 		// SPI - has both TX and RX so use it
 		_pkinetisk_spi->RSER =  SPI_RSER_RFDF_RE | SPI_RSER_RFDF_DIRS | SPI_RSER_TFFF_RE | SPI_RSER_TFFF_DIRS;
 
@@ -1235,7 +1225,8 @@ uint8_t ILI9341_t3n::readcommand8(uint8_t c, uint8_t index)
     uint8_t r=0;
 
     beginSPITransaction();
-	if (_pspin->sizeFIFO() >= 4) {
+	if (_spi_num == 0) {
+		// Only SPI object has larger queue
 	    while (((_pkinetisk_spi->SR) & (15 << 12)) && (--wTimeout)) ; // wait until empty
 
 	    // Make sure the last frame has been sent...
@@ -1407,7 +1398,8 @@ uint16_t ILI9341_t3n::readPixel(int16_t x, int16_t y)
    if (_miso == 0xff) return 0xffff;	// bail if not valid miso
 
 	// First pass for other SPI busses use readRect to handle the read... 
-	if (_pspin->sizeFIFO() < 4) {
+	if (_spi_num != 0) {
+		// Only SPI object has larger queue
 		uint16_t colors;
 		readRect(x, y, 1, 1, &colors);
 		return colors;
@@ -1498,7 +1490,7 @@ void ILI9341_t3n::readRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 
 	while (txCount || rxCount) {
 		// transmit another byte if possible
-		if (txCount && ((_pkinetisk_spi->SR & 0xF000) >> 12) < _pspin->sizeFIFO()) {
+		if (txCount && (_pkinetisk_spi->SR & 0xF000) <= _fifo_full_test) {
 			txCount--;
 			if (txCount) {
 				_pkinetisk_spi->PUSHR = READ_PIXEL_PUSH_BYTE | (pcs_data << 16) | SPI_PUSHR_CTAS(0)| SPI_PUSHR_CONT;
@@ -1975,7 +1967,7 @@ void ILI9341_t3n::begin(void)
 	// allow user to say use current ones...
 	Serial.printf("_t3n::begin mosi:%d miso:%d SCLK:%d CS:%d DC:%d\n", _mosi, _miso, _sclk, _cs, _dc); Serial.flush();
 
-	if (SPI.pinIsMOSI(_mosi) && SPI.pinIsMISO(_miso) && SPI.pinIsSCK(_sclk)) {
+	if (SPI.pinIsMOSI(_mosi) && ((_miso == 0xff) || SPI.pinIsMISO(_miso)) && SPI.pinIsSCK(_sclk)) {
 		_pspi = &SPI;
 		_spi_num = 0;          // Which buss is this spi on? 
 		#ifdef KINETISK
@@ -1988,7 +1980,7 @@ void ILI9341_t3n::begin(void)
 		#endif				
 	
 	#if defined(__MK64FX512__) || defined(__MK66FX1M0__) || defined(__IMXRT1062__) || defined(__MKL26Z64__)
-	} else if (SPI1.pinIsMOSI(_mosi) && SPI1.pinIsMISO(_miso) && SPI1.pinIsSCK(_sclk)) {
+	} else if (SPI1.pinIsMOSI(_mosi) && ((_miso == 0xff) || SPI1.pinIsMISO(_miso)) && SPI1.pinIsSCK(_sclk)) {
 		_pspi = &SPI1;
 		_spi_num = 1;          // Which buss is this spi on? 
 		#ifdef KINETISK
@@ -2000,7 +1992,7 @@ void ILI9341_t3n::begin(void)
 		_pkinetisl_spi = &KINETISL_SPI1;
 		#endif				
 	#if !defined(__MKL26Z64__)
-	} else if (SPI2.pinIsMOSI(_mosi) && SPI2.pinIsMISO(_miso) && SPI2.pinIsSCK(_sclk)) {
+	} else if (SPI2.pinIsMOSI(_mosi) && ((_miso == 0xff) || SPI2.pinIsMISO(_miso)) && SPI2.pinIsSCK(_sclk)) {
 		_pspi = &SPI2;
 		_spi_num = 1;          // Which buss is this spi on? 
 		#ifdef KINETISK
@@ -2018,6 +2010,10 @@ void ILI9341_t3n::begin(void)
 		return;  // most likely will go bomb
 
 	}
+	// Make sure we have all of the proper SPI pins selected.
+	_pspi->setMOSI(_mosi);
+	_pspi->setSCK(_sclk);
+	if (_miso != 0xff) _pspi->setMISO(_miso);
 
 	// Hack to get hold of the SPI Hardware information... 
  	uint32_t *pa = (uint32_t*)((void*)_pspi);
