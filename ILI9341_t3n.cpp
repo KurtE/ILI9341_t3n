@@ -206,9 +206,9 @@ void ILI9341_t3n::process_dma_interrupt(void) {
 			}
 		}
 		if (_dma_sub_frame_count & 1) {
-			memcpy(_dma_buffer1, &_pfbtft[_dma_pixel_index], _dma_buffer_size*2);
+			memcpy(_dma_buffer1, &_pfbtft_async[_dma_pixel_index], _dma_buffer_size*2);
 		} else {			
-			memcpy(_dma_buffer2, &_pfbtft[_dma_pixel_index], _dma_buffer_size*2);
+			memcpy(_dma_buffer2, &_pfbtft_async[_dma_pixel_index], _dma_buffer_size*2);
 		}
 		_dma_pixel_index += _dma_buffer_size;
 		if (_dma_pixel_index >= (_count_pixels))
@@ -658,8 +658,9 @@ bool ILI9341_t3n::updateScreenAsync(bool update_cont)					// call to say update 
 	dumpDMASettings();
 #endif
 	// Lets copy first parts of frame buffer into our two sub-frames
-	memcpy(_dma_buffer1, _pfbtft, _dma_buffer_size*2);
-	memcpy(_dma_buffer2, &_pfbtft[_dma_buffer_size], _dma_buffer_size*2);
+	_pfbtft_async = _pfbtft;		// remember buffer pointer at start of operation, may allow user to swap...
+	memcpy(_dma_buffer1, _pfbtft_async, _dma_buffer_size*2);
+	memcpy(_dma_buffer2, &_pfbtft_async[_dma_buffer_size], _dma_buffer_size*2);
 	_dma_pixel_index = _dma_buffer_size*2;
 	_dma_sub_frame_count = 0;	// 
 
