@@ -48,7 +48,6 @@
 // <\SoftEgg>
 
 #include "ILI9341_t3n.h"
-#include <SPIN.h>
 #include <SPI.h>  
 
 //#define DEBUG_ASYNC_UPDATE  // Enable to print out dma info
@@ -133,7 +132,7 @@ void ILI9341_t3n::process_dma_interrupt(void) {
 	if ((_dma_state & ILI9341_DMA_CONT) == 0) {
 		// We are in single refresh mode or the user has called cancel so
 		// Lets try to release the CS pin
-		_pspin->waitFifoNotFull();
+		waitFifoNotFull();
 		writecommand_last(ILI9341_NOP);
 		endSPITransaction();
 		_dma_state &= ~ILI9341_DMA_ACTIVE;
@@ -207,9 +206,9 @@ void ILI9341_t3n::process_dma_interrupt(void) {
 			}
 		}
 		if (_dma_sub_frame_count & 1) {
-			memcpy(_dma_buffer1, &_pfbtft[_dma_pixel_index], _dma_buffer_size*2);
+			memcpy(_dma_buffer1, &_pfbtft_async[_dma_pixel_index], _dma_buffer_size*2);
 		} else {			
-			memcpy(_dma_buffer2, &_pfbtft[_dma_pixel_index], _dma_buffer_size*2);
+			memcpy(_dma_buffer2, &_pfbtft_async[_dma_pixel_index], _dma_buffer_size*2);
 		}
 		_dma_pixel_index += _dma_buffer_size;
 		if (_dma_pixel_index >= (_count_pixels))
@@ -282,7 +281,7 @@ void ILI9341_t3n::process_dma_interrupt(void) {
 // Constructor when using hardware ILI9241_KINETISK__pspi->  Faster, but must use SPI pins
 // specific to each board type (e.g. 11,13 for Uno, 51,52 for Mega, etc.)
 ILI9341_t3n::ILI9341_t3n(uint8_t cs, uint8_t dc, uint8_t rst, 
-	uint8_t mosi, uint8_t sclk, uint8_t miso, SPINClass *pspin )
+	uint8_t mosi, uint8_t sclk, uint8_t miso)
 {
 	_cs   = cs;
 	_dc   = dc;
@@ -292,14 +291,6 @@ ILI9341_t3n::ILI9341_t3n(uint8_t cs, uint8_t dc, uint8_t rst,
 	_miso = miso;
 	_width    = WIDTH;
 	_height   = HEIGHT;
-	_pspin	  = pspin; 
-#ifdef KINETISK	
-	_pkinetisk_spi = &_pspin->port();
-#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
- 	_pimxrt_spi = &_pspin->port();
-#else
-	_pkinetisl_spi = &_pspin->port();
-#endif	
 
 	rotation  = 0;
 	cursor_y  = cursor_x    = 0;
@@ -441,7 +432,7 @@ void	ILI9341_t3n::initDMASettings(void)
 	}
 
 	//Serial.println("InitDMASettings");
-	uint8_t dmaTXevent = _pspin->dmaTXEvent();
+	uint8_t dmaTXevent = _spi_hardware->tx_dma_channel;
 #if defined(__MK66FX1M0__) 
 	// T3.6
 
@@ -523,7 +514,7 @@ void	ILI9341_t3n::initDMASettings(void)
 	_dmarx.TCD->ATTR_SRC = 1;
 	_dmarx.destination(_dma_dummy_rx);
 	_dmarx.disableOnCompletion();
-	_dmarx.triggerAtHardwareEvent(_pspin->dmaRXEvent());
+	_dmarx.triggerAtHardwareEvent( _spi_hardware->rx_dma_channel);
 	_dmarx.attachInterrupt(dmaInterrupt);
 	_dmarx.interruptAtCompletion();
 
@@ -535,7 +526,7 @@ void	ILI9341_t3n::initDMASettings(void)
 	_dmatx.TCD->ATTR_DST = 1;
 	_dmatx.disableOnCompletion();
 	// Current SPIN, has both RX/TX same for SPI1/2 so just know f
-	if (_pspin == &SPIN) {
+	if (_spi_num == 0) {
 		_dmatx.triggerAtHardwareEvent(dmaTXevent);
 		_dma_write_size_words = COUNT_WORDS_WRITE;
 	} else {
@@ -590,7 +581,7 @@ bool ILI9341_t3n::updateScreenAsync(bool update_cont)					// call to say update 
 	//	pin.
 	if (!_csport) {
 		pcs_data = 0;
-		pcs_command = pcs_data | _pspin->setCS(_dc);
+		pcs_command = pcs_data | _pspi->setCS(_dc);
 		pinMode(_cs, OUTPUT);
 		_csport    = portOutputRegister(digitalPinToPort(_cs));
 		_cspinmask = digitalPinToBitMask(_cs);
@@ -667,8 +658,9 @@ bool ILI9341_t3n::updateScreenAsync(bool update_cont)					// call to say update 
 	dumpDMASettings();
 #endif
 	// Lets copy first parts of frame buffer into our two sub-frames
-	memcpy(_dma_buffer1, _pfbtft, _dma_buffer_size*2);
-	memcpy(_dma_buffer2, &_pfbtft[_dma_buffer_size], _dma_buffer_size*2);
+	_pfbtft_async = _pfbtft;		// remember buffer pointer at start of operation, may allow user to swap...
+	memcpy(_dma_buffer1, _pfbtft_async, _dma_buffer_size*2);
+	memcpy(_dma_buffer2, &_pfbtft_async[_dma_buffer_size], _dma_buffer_size*2);
 	_dma_pixel_index = _dma_buffer_size*2;
 	_dma_sub_frame_count = 0;	// 
 
@@ -684,7 +676,7 @@ bool ILI9341_t3n::updateScreenAsync(bool update_cont)					// call to say update 
  	_pimxrt_spi->DER = LPSPI_DER_TDDE;
 	_pimxrt_spi->SR = 0x3f00;	// clear out all of the other status...
 
-  	_dmatx.triggerAtHardwareEvent( _pspin->dmaTXEvent() );
+  	_dmatx.triggerAtHardwareEvent( _spi_hardware->tx_dma_channel );
 
  	_dmatx = _dmasettings[0];
 
@@ -733,7 +725,7 @@ bool ILI9341_t3n::updateScreenAsync(bool update_cont)					// call to say update 
 	// Lets try to output the first byte to make sure that we are in 16 bit mode...
 	_pkinetisk_spi->PUSHR = *_pfbtft | SPI_PUSHR_CTAS(0) | SPI_PUSHR_CONT;	
 
-	if (_pspin == &SPIN) {
+	if (_spi_num == 0) {
 		// SPI - has both TX and RX so use it
 		_pkinetisk_spi->RSER =  SPI_RSER_RFDF_RE | SPI_RSER_RFDF_DIRS | SPI_RSER_TFFF_RE | SPI_RSER_TFFF_DIRS;
 
@@ -1234,7 +1226,8 @@ uint8_t ILI9341_t3n::readcommand8(uint8_t c, uint8_t index)
     uint8_t r=0;
 
     beginSPITransaction();
-	if (_pspin->sizeFIFO() >= 4) {
+	if (_spi_num == 0) {
+		// Only SPI object has larger queue
 	    while (((_pkinetisk_spi->SR) & (15 << 12)) && (--wTimeout)) ; // wait until empty
 
 	    // Make sure the last frame has been sent...
@@ -1406,7 +1399,8 @@ uint16_t ILI9341_t3n::readPixel(int16_t x, int16_t y)
    if (_miso == 0xff) return 0xffff;	// bail if not valid miso
 
 	// First pass for other SPI busses use readRect to handle the read... 
-	if (_pspin->sizeFIFO() < 4) {
+	if (_spi_num != 0) {
+		// Only SPI object has larger queue
 		uint16_t colors;
 		readRect(x, y, 1, 1, &colors);
 		return colors;
@@ -1423,11 +1417,11 @@ uint16_t ILI9341_t3n::readPixel(int16_t x, int16_t y)
 
 	setAddr(x, y, x, y);
 	writecommand_cont(ILI9341_RAMRD); // read from RAM
-	_pspin->waitTransmitComplete();
+	waitTransmitComplete();
 
 	// Push 4 bytes over SPI
 	_pkinetisk_spi->PUSHR = 0 | (pcs_data << 16) | SPI_PUSHR_CTAS(0)| SPI_PUSHR_CONT;
-	_pspin->waitFifoEmpty();    // wait for both queues to be empty.
+	waitFifoEmpty();    // wait for both queues to be empty.
 
 	_pkinetisk_spi->PUSHR = 0 | (pcs_data << 16) | SPI_PUSHR_CTAS(0)| SPI_PUSHR_CONT;
 	_pkinetisk_spi->PUSHR = 0 | (pcs_data << 16) | SPI_PUSHR_CTAS(0)| SPI_PUSHR_CONT;
@@ -1497,7 +1491,7 @@ void ILI9341_t3n::readRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 
 	while (txCount || rxCount) {
 		// transmit another byte if possible
-		if (txCount && ((_pkinetisk_spi->SR & 0xF000) >> 12) < _pspin->sizeFIFO()) {
+		if (txCount && (_pkinetisk_spi->SR & 0xF000) <= _fifo_full_test) {
 			txCount--;
 			if (txCount) {
 				_pkinetisk_spi->PUSHR = READ_PIXEL_PUSH_BYTE | (pcs_data << 16) | SPI_PUSHR_CTAS(0)| SPI_PUSHR_CONT;
@@ -1973,90 +1967,69 @@ void ILI9341_t3n::begin(void)
     // verify SPI pins are valid;
 	// allow user to say use current ones...
 	Serial.printf("_t3n::begin mosi:%d miso:%d SCLK:%d CS:%d DC:%d\n", _mosi, _miso, _sclk, _cs, _dc); Serial.flush();
-#ifdef DEBUG_ASYNC_UPDATE
-	//Serial.printf("????? _dmasettings[0] %x %x\n", (uint32_t)&_dmasettings[0], (uint32_t)_dmasettings[0].TCD); Serial.flush();
-#endif
-	if ((_mosi != 255) || (_miso != 255) || (_sclk != 255)) {
-		if (!(_pspin->pinIsMOSI(_mosi)) || !(_pspin->pinIsMISO(_miso)) || !(_pspin->pinIsSCK(_sclk))) {
-			#ifdef SPIN1_OBJECT_CREATED			
-			if (SPIN1.pinIsMOSI(_mosi) && SPIN1.pinIsMISO(_miso) && SPIN1.pinIsSCK(_sclk)) {
-				_pspin = &SPIN1;
-#ifdef KINETISK
-				_pkinetisk_spi = &_pspin->port();
-#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x 
-				_pimxrt_spi = &_pspin->port();
-#else
-				_pkinetisl_spi = &_pspin->port();
-#endif				
-				Serial.println("ILI9341_t3n: SPIN1 automatically selected");
-			} else {
-				#ifdef SPIN2_OBJECT_CREATED			
-				if (SPIN2.pinIsMOSI(_mosi) && SPIN2.pinIsMISO(_miso) && SPIN2.pinIsSCK(_sclk)) {
-					_pspin = &SPIN2;
-#ifdef KINETISK
-				_pkinetisk_spi = &_pspin->port();
-#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x 
-				_pimxrt_spi = &_pspin->port();
-#else
-				_pkinetisl_spi = &_pspin->port();
-#endif				
-					Serial.println("ILI9341_t3n: SPIN2 automatically selected");
-				} else {
-				#endif
-			#endif
-					uint8_t mosi_sck_bad = false;
-					Serial.print("ILI9341_t3n: Error not valid SPI pins:");
-					if(!(_pspin->pinIsMOSI(_mosi)))  {
-						Serial.print(" MOSI");
-						mosi_sck_bad = true;
-					}
-					if (!_pspin->pinIsSCK(_sclk)) {
-						Serial.print(" SCLK");
-						mosi_sck_bad = true;
-					}
 
-					// Maybe allow us to limp with only MISO bad
-					if(!(_pspin->pinIsMISO(_miso))) {
-						Serial.print(" MISO");
-						_miso = 0xff;	// set miso to 255 as flag it is bad
-					}
-					Serial.println();
-					
-					if (mosi_sck_bad) {
-	    				return; // not valid pins...
-					}
-				#ifdef SPIN2_OBJECT_CREATED			
-	    		}
-	    		#endif
-			#ifdef SPIN1_OBJECT_CREATED			
-			}
-			#endif
+	if (SPI.pinIsMOSI(_mosi) && ((_miso == 0xff) || SPI.pinIsMISO(_miso)) && SPI.pinIsSCK(_sclk)) {
+		_pspi = &SPI;
+		_spi_num = 0;          // Which buss is this spi on? 
+		#ifdef KINETISK
+		_pkinetisk_spi = &KINETISK_SPI0;  // Could hack our way to grab this from SPI object, but...
+		_fifo_full_test = (3 << 12);
+		#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x 
+		_pimxrt_spi = &IMXRT_LPSPI4_S;  // Could hack our way to grab this from SPI object, but...
+	#else
+		_pkinetisl_spi = &KINETISL_SPI0;
+		#endif				
+	
+	#if defined(__MK64FX512__) || defined(__MK66FX1M0__) || defined(__IMXRT1062__) || defined(__MKL26Z64__)
+	} else if (SPI1.pinIsMOSI(_mosi) && ((_miso == 0xff) || SPI1.pinIsMISO(_miso)) && SPI1.pinIsSCK(_sclk)) {
+		_pspi = &SPI1;
+		_spi_num = 1;          // Which buss is this spi on? 
+		#ifdef KINETISK
+		_pkinetisk_spi = &KINETISK_SPI1;  // Could hack our way to grab this from SPI object, but...
+		_fifo_full_test = (0 << 12);
+		#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x 
+		_pimxrt_spi = &IMXRT_LPSPI3_S;  // Could hack our way to grab this from SPI object, but...
+		#else
+		_pkinetisl_spi = &KINETISL_SPI1;
+		#endif				
+	#if !defined(__MKL26Z64__)
+	} else if (SPI2.pinIsMOSI(_mosi) && ((_miso == 0xff) || SPI2.pinIsMISO(_miso)) && SPI2.pinIsSCK(_sclk)) {
+		_pspi = &SPI2;
+		_spi_num = 2;          // Which buss is this spi on? 
+		#ifdef KINETISK
+		_pkinetisk_spi = &KINETISK_SPI2;  // Could hack our way to grab this from SPI object, but...
+		_fifo_full_test = (0 << 12);
+		#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x 
+		_pimxrt_spi = &IMXRT_LPSPI1_S;  // Could hack our way to grab this from SPI object, but...
+		#endif				
+	#endif
+	#endif
+	} else {
+		Serial.println("ILI9341_t3n: The IO pins on the constructor are not valid SPI pins");
+	
+		Serial.printf("    mosi:%d miso:%d SCLK:%d CS:%d DC:%d\n", _mosi, _miso, _sclk, _cs, _dc); Serial.flush();
+		return;  // most likely will go bomb
 
-		}
-		//Serial.printf("MOSI:%d MISO:%d SCK:%d\n\r", _mosi, _miso, _sclk);			
-        _pspin->setMOSI(_mosi);
-        if (_miso != 0xff) _pspin->setMISO(_miso);
-        _pspin->setSCK(_sclk);
 	}
-	// There is probably a cleaner way to do this... 
-	_spi_num = 0;	// 
-	#ifdef SPIN1_OBJECT_CREATED			
-	if (_pspin == &SPIN1) _spi_num = 1;
-	#endif
-	#ifdef SPIN2_OBJECT_CREATED			
-	if (_pspin == &SPIN2) _spi_num = 2;
-	#endif
+	// Make sure we have all of the proper SPI pins selected.
+	_pspi->setMOSI(_mosi);
+	_pspi->setSCK(_sclk);
+	if (_miso != 0xff) _pspi->setMISO(_miso);
 
-	_pspin->begin();
+	// Hack to get hold of the SPI Hardware information... 
+ 	uint32_t *pa = (uint32_t*)((void*)_pspi);
+	_spi_hardware = (SPIClass::SPI_Hardware_t*)(void*)pa[1];
+
+	_pspi->begin();
 #ifdef KINETISK
-	if (_pspin->pinIsChipSelect(_cs, _dc)) {
-		pcs_data = _pspin->setCS(_cs);
-		pcs_command = pcs_data | _pspin->setCS(_dc);
+	if (_pspi->pinIsChipSelect(_cs, _dc)) {
+		pcs_data = _pspi->setCS(_cs);
+		pcs_command = pcs_data | _pspi->setCS(_dc);
 	} else {
 		// See if at least DC is on chipselect pin, if so try to limp along...
-		if (_pspin->pinIsChipSelect(_dc)) {
+		if (_pspi->pinIsChipSelect(_dc)) {
 			pcs_data = 0;
-			pcs_command = pcs_data | _pspin->setCS(_dc);
+			pcs_command = pcs_data | _pspi->setCS(_dc);
 			pinMode(_cs, OUTPUT);
 			_csport    = portOutputRegister(digitalPinToPort(_cs));
 			_cspinmask = digitalPinToBitMask(_cs);
@@ -2077,8 +2050,8 @@ void ILI9341_t3n::begin(void)
 	_spi_tcr_current = _pimxrt_spi->TCR; // get the current TCR value 
 
 	// TODO:  Need to setup DC to actually work.
-	if (_pspin->pinIsChipSelect(_dc)) {
-	 	_pspin->setCS(_dc);
+	if (_pspi->pinIsChipSelect(_dc)) {
+	 	_pspi->setCS(_dc);
 	 	_dcport = 0;
 	 	_dcpinmask = 0;
 	} else {
@@ -4346,3 +4319,81 @@ void ILI9341_t3n::resetScrollBackgroundColor(uint16_t color){
 	scrollbgcolor=color;
 }	
 
+
+
+//////////////////////////////////////////////////////
+// From Spin:
+#if defined(KINETISK)
+void ILI9341_t3n::waitFifoNotFull(void) {
+    uint32_t sr;
+    uint32_t tmp __attribute__((unused));
+    do {
+        sr = _pkinetisk_spi->SR;
+        if (sr & 0xF0) tmp = _pkinetisk_spi->POPR;  // drain RX FIFO
+    } while ((uint32_t)(sr & (15 << 12)) > _fifo_full_test);
+}
+void ILI9341_t3n::waitFifoEmpty(void) {
+    uint32_t sr;
+    uint32_t tmp __attribute__((unused));
+    do {
+        sr = _pkinetisk_spi->SR;
+        if (sr & 0xF0) tmp = _pkinetisk_spi->POPR;  // drain RX FIFO
+    } while ((sr & 0xF0F0) > 0);             // wait both RX & TX empty
+}
+void ILI9341_t3n::waitTransmitComplete(void)  {
+    uint32_t tmp __attribute__((unused));
+    while (!(_pkinetisk_spi->SR & SPI_SR_TCF)) ; // wait until final output done
+    tmp = _pkinetisk_spi->POPR;                  // drain the final RX FIFO word
+}
+void ILI9341_t3n::waitTransmitComplete(uint32_t mcr) {
+    uint32_t tmp __attribute__((unused));
+    while (1) {
+        uint32_t sr = _pkinetisk_spi->SR;
+        if (sr & SPI_SR_EOQF) break;  // wait for last transmit
+        if (sr &  0xF0) tmp = _pkinetisk_spi->POPR;
+    }
+    _pkinetisk_spi->SR = SPI_SR_EOQF;
+    _pkinetisk_spi->MCR = mcr;
+    while (_pkinetisk_spi->SR & 0xF0) {
+        tmp = _pkinetisk_spi->POPR;
+    }
+}
+
+#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
+void ILI9341_t3n::waitFifoNotFull(void) {
+    uint32_t tmp __attribute__((unused));
+    do {
+        if ((_pimxrt_spi->RSR & LPSPI_RSR_RXEMPTY) == 0)  {
+            tmp = _pimxrt_spi->RDR;  // Read any pending RX bytes in
+            if (pending_rx_count) pending_rx_count--; //decrement count of bytes still levt
+        }
+    } while ((_pimxrt_spi->SR & LPSPI_SR_TDF) == 0) ;
+}
+void ILI9341_t3n::waitFifoEmpty(void) {
+    uint32_t tmp __attribute__((unused));
+    do {
+        if ((_pimxrt_spi->RSR & LPSPI_RSR_RXEMPTY) == 0)  {
+            tmp = _pimxrt_spi->RDR;  // Read any pending RX bytes in
+            if (pending_rx_count) pending_rx_count--; //decrement count of bytes still levt
+        }
+    } while ((_pimxrt_spi->SR & LPSPI_SR_TCF) == 0) ;
+}
+void ILI9341_t3n::waitTransmitComplete(void)  {
+    uint32_t tmp __attribute__((unused));
+//    digitalWriteFast(2, HIGH);
+
+    while (pending_rx_count) {
+        if ((_pimxrt_spi->RSR & LPSPI_RSR_RXEMPTY) == 0)  {
+            tmp = _pimxrt_spi->RDR;  // Read any pending RX bytes in
+            pending_rx_count--; //decrement count of bytes still levt
+        }
+    }
+    _pimxrt_spi->CR = LPSPI_CR_MEN | LPSPI_CR_RRF;       // Clear RX FIFO
+//    digitalWriteFast(2, LOW);
+}
+
+void ILI9341_t3n::waitTransmitComplete(uint32_t mcr) {
+    // BUGBUG:: figure out if needed...
+    waitTransmitComplete();
+}
+#endif

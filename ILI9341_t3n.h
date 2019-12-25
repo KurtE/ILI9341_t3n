@@ -1,6 +1,9 @@
 // https://github.com/PaulStoffregen/ILI9341_t3n
 // http://forum.pjrc.com/threads/26305-Highly-optimized-ILI9341-(320x240-TFT-color-display)-library
-// Warning this is Kurt's hacked up version using my SPIN library to allow different SPI busses
+//
+// Warning this is Kurt's hacked up version whcih allow different SPI busses, which hopefully 
+//         will no longer be reliant on the SPIN library.  
+//
 // Also allows use on only one valid CS pin on that buss, which must be used for DC
 
 /***************************************************
@@ -56,6 +59,11 @@
 
 #ifndef _ILI9341_t3NH_
 #define _ILI9341_t3NH_
+#ifdef _SPIN_H_INCLUDED
+#warning "Spin library is no longer required"
+#endif
+#define _SPIN_H_INCLUDED	// try to avoid spin library from loading. 
+
 #define  ILI9341_USE_DMAMEM
 
 // Allow us to enable or disable capabilities, particully Frame Buffer and Clipping for speed and size
@@ -74,7 +82,6 @@
 #ifdef __cplusplus
 #include "Arduino.h"
 #include <SPI.h>
-#include <SPIN.h>
 #include <DMAChannel.h>
 
 #endif
@@ -229,7 +236,7 @@ typedef struct {
 
 
 #ifdef __cplusplus
-// At all other speeds, ILI9241_KINETISK__pspi->beginTransaction() will use the fastest available clock
+// At all other speeds, _pspi->beginTransaction() will use the fastest available clock
 #ifdef KINETISK
 #define ILI9341_SPICLOCK 30000000
 #define ILI9341_SPICLOCK_READ 2000000
@@ -240,12 +247,12 @@ typedef struct {
 #define ILI9341_SPICLOCK 30000000
 #define ILI9341_SPICLOCK_READ 2000000
 #endif
+
 class ILI9341_t3n : public Print
 {
   public:
 	ILI9341_t3n(uint8_t _CS, uint8_t _DC, uint8_t _RST = 255, 
-		uint8_t _MOSI=11, uint8_t _SCLK=13, uint8_t _MISO=12, 
-		SPINClass *pspin=(SPINClass*)(&SPIN));
+		uint8_t _MOSI=11, uint8_t _SCLK=13, uint8_t _MISO=12);
 	void begin(void);
   	void sleep(bool enable);		
 	void pushColor(uint16_t color);
@@ -441,7 +448,9 @@ class ILI9341_t3n : public Print
 	boolean	asyncUpdateActive(void)  {return false;}
 	#endif
  protected:
- 	SPINClass *_pspin;
+	SPIClass *_pspi = nullptr;
+	SPIClass::SPI_Hardware_t *_spi_hardware;
+
   	uint8_t   _spi_num;          // Which buss is this spi on? 
 #if defined(KINETISK)
  	KINETISK_SPI_t *_pkinetisk_spi;
@@ -511,6 +520,28 @@ class ILI9341_t3n : public Print
   	uint8_t _cs, _dc;
 	uint8_t pcs_data, pcs_command;
 	uint8_t _miso, _mosi, _sclk;
+
+    ///////////////////////////////
+	// BUGBUG:: reorganize this area better!
+	#if defined(KINETISK)
+    //inline uint8_t sizeFIFO() {return _fifo_size; }
+  	uint32_t _fifo_full_test;
+    void waitFifoNotFull(void);
+    void waitFifoEmpty(void);
+    void waitTransmitComplete(void) ;
+    void waitTransmitComplete(uint32_t mcr);
+
+	#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)
+    uint8_t pending_rx_count = 0; // hack ...
+    void waitFifoNotFull(void);
+    void waitFifoEmpty(void);
+    void waitTransmitComplete(void) ;
+    void waitTransmitComplete(uint32_t mcr);
+	#elif defined(KINETISL)
+	#endif  
+    //////////////////////////////
+
+
 	// add support to allow only one hardware CS (used for dc)
 #if defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
     uint32_t _cspinmask;
@@ -533,6 +564,7 @@ class ILI9341_t3n : public Print
     uint16_t	*_we_allocated_buffer;			// We allocated the buffer; 
     // Add DMA support. 
 #if defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
+    uint16_t	*_pfbtft_async;					// pointer to async buffer at start of async operation...
 	static  ILI9341_t3n 		*_dmaActiveDisplay[3];  // Use pointer to this as a way to get back to object...
 #else
 	static  ILI9341_t3n 		*_dmaActiveDisplay;  // Use pointer to this as a way to get back to object...
@@ -586,6 +618,7 @@ class ILI9341_t3n : public Print
 //. From Onewire utility files
 #if defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
 
+
 	void DIRECT_WRITE_LOW(volatile uint32_t * base, uint32_t mask)  __attribute__((always_inline)) {
 		*(base+34) = mask;
 	}
@@ -595,7 +628,7 @@ class ILI9341_t3n : public Print
 #endif
 
 	void beginSPITransaction(uint32_t clock = ILI9341_SPICLOCK) __attribute__((always_inline)) {
-		_pspin->beginTransaction(SPISettings(clock, MSBFIRST, SPI_MODE0));
+		_pspi->beginTransaction(SPISettings(clock, MSBFIRST, SPI_MODE0));
 		if (_csport) {
 #if defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x 
 			DIRECT_WRITE_LOW(_csport, _cspinmask);
@@ -612,35 +645,35 @@ class ILI9341_t3n : public Print
 			*_csport |= _cspinmask;
 #endif
 		}
-		_pspin->endTransaction();
+		_pspi->endTransaction();
 	}
 #if defined(KINETISK)	
 	void writecommand_cont(uint8_t c) __attribute__((always_inline)) {
 		_pkinetisk_spi->PUSHR = c | (pcs_command << 16) | SPI_PUSHR_CTAS(0) | SPI_PUSHR_CONT;
-		_pspin->waitFifoNotFull();
+		waitFifoNotFull();
 	}
 	void writedata8_cont(uint8_t c) __attribute__((always_inline)) {
 		_pkinetisk_spi->PUSHR = c | (pcs_data << 16) | SPI_PUSHR_CTAS(0) | SPI_PUSHR_CONT;
-		_pspin->waitFifoNotFull();
+		waitFifoNotFull();
 	}
 	void writedata16_cont(uint16_t d) __attribute__((always_inline)) {
 		_pkinetisk_spi->PUSHR = d | (pcs_data << 16) | SPI_PUSHR_CTAS(1) | SPI_PUSHR_CONT;
-		_pspin->waitFifoNotFull();
+		waitFifoNotFull();
 	}
 	void writecommand_last(uint8_t c) __attribute__((always_inline)) {
 		uint32_t mcr = _pkinetisk_spi->MCR;
 		_pkinetisk_spi->PUSHR = c | (pcs_command << 16) | SPI_PUSHR_CTAS(0) | SPI_PUSHR_EOQ;
-		_pspin->waitTransmitComplete(mcr);
+		waitTransmitComplete(mcr);
 	}
 	void writedata8_last(uint8_t c) __attribute__((always_inline)) {
 		uint32_t mcr = _pkinetisk_spi->MCR;
 		_pkinetisk_spi->PUSHR = c | (pcs_data << 16) | SPI_PUSHR_CTAS(0) | SPI_PUSHR_EOQ;
-		_pspin->waitTransmitComplete(mcr);
+		waitTransmitComplete(mcr);
 	}
 	void writedata16_last(uint16_t d) __attribute__((always_inline)) {
 		uint32_t mcr = _pkinetisk_spi->MCR;
 		_pkinetisk_spi->PUSHR = d | (pcs_data << 16) | SPI_PUSHR_CTAS(1) | SPI_PUSHR_EOQ;
-		_pspin->waitTransmitComplete(mcr);
+		waitTransmitComplete(mcr);
 	}
 #elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x 
 	#define TCR_MASK  (LPSPI_TCR_PCS(3) | LPSPI_TCR_FRAMESZ(31) | LPSPI_TCR_CONT | LPSPI_TCR_RXMSK )
@@ -654,7 +687,7 @@ class ILI9341_t3n : public Print
 				_pimxrt_spi->TCR = _spi_tcr_current;	// update the TCR
 
 			} else {
-				_pspin->waitTransmitComplete();
+				waitTransmitComplete();
 				if (requested_tcr_state & LPSPI_TCR_PCS(3)) DIRECT_WRITE_HIGH(_dcport, _dcpinmask);
 				else DIRECT_WRITE_LOW(_dcport, _dcpinmask);
 				_pimxrt_spi->TCR = _spi_tcr_current & ~(LPSPI_TCR_PCS(3) | LPSPI_TCR_CONT);	// go ahead and update TCR anyway?  
@@ -667,41 +700,41 @@ class ILI9341_t3n : public Print
 	void writecommand_cont(uint8_t c) __attribute__((always_inline)) {
 		maybeUpdateTCR(LPSPI_TCR_PCS(0) | LPSPI_TCR_FRAMESZ(7) /*| LPSPI_TCR_CONT*/);
 		_pimxrt_spi->TDR = c;
-		_pspin->pending_rx_count++;	//
-		_pspin->waitFifoNotFull();
+		pending_rx_count++;	//
+		waitFifoNotFull();
 	}
 	void writedata8_cont(uint8_t c) __attribute__((always_inline)) {
 		maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(7) | LPSPI_TCR_CONT);
 		_pimxrt_spi->TDR = c;
-		_pspin->pending_rx_count++;	//
-		_pspin->waitFifoNotFull();
+		pending_rx_count++;	//
+		waitFifoNotFull();
 	}
 	void writedata16_cont(uint16_t d) __attribute__((always_inline)) {
 		maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(15) | LPSPI_TCR_CONT);
 		_pimxrt_spi->TDR = d;
-		_pspin->pending_rx_count++;	//
-		_pspin->waitFifoNotFull();
+		pending_rx_count++;	//
+		waitFifoNotFull();
 	}
 	void writecommand_last(uint8_t c) __attribute__((always_inline)) {
 		maybeUpdateTCR(LPSPI_TCR_PCS(0) | LPSPI_TCR_FRAMESZ(7));
 		_pimxrt_spi->TDR = c;
 //		_pimxrt_spi->SR = LPSPI_SR_WCF | LPSPI_SR_FCF | LPSPI_SR_TCF;
-		_pspin->pending_rx_count++;	//
-		_pspin->waitTransmitComplete();
+		pending_rx_count++;	//
+		waitTransmitComplete();
 	}
 	void writedata8_last(uint8_t c) __attribute__((always_inline)) {
 		maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(7));
 		_pimxrt_spi->TDR = c;
 //		_pimxrt_spi->SR = LPSPI_SR_WCF | LPSPI_SR_FCF | LPSPI_SR_TCF;
-		_pspin->pending_rx_count++;	//
-		_pspin->waitTransmitComplete();
+		pending_rx_count++;	//
+		waitTransmitComplete();
 	}
 	void writedata16_last(uint16_t d) __attribute__((always_inline)) {
 		maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(15));
 		_pimxrt_spi->TDR = d;
 //		_pimxrt_spi->SR = LPSPI_SR_WCF | LPSPI_SR_FCF | LPSPI_SR_TCF;
-		_pspin->pending_rx_count++;	//
-		_pspin->waitTransmitComplete();
+		pending_rx_count++;	//
+		waitTransmitComplete();
 	}
 
 #elif defined (KINETISL)
