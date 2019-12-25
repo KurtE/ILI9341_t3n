@@ -1995,12 +1995,12 @@ void ILI9341_t3n::begin(void)
 	#if !defined(__MKL26Z64__)
 	} else if (SPI2.pinIsMOSI(_mosi) && ((_miso == 0xff) || SPI2.pinIsMISO(_miso)) && SPI2.pinIsSCK(_sclk)) {
 		_pspi = &SPI2;
-		_spi_num = 1;          // Which buss is this spi on? 
+		_spi_num = 2;          // Which buss is this spi on? 
 		#ifdef KINETISK
 		_pkinetisk_spi = &KINETISK_SPI2;  // Could hack our way to grab this from SPI object, but...
 		_fifo_full_test = (0 << 12);
 		#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x 
-		_pimxrt_spi = &IMXRT_LPSPI3_S;  // Could hack our way to grab this from SPI object, but...
+		_pimxrt_spi = &IMXRT_LPSPI1_S;  // Could hack our way to grab this from SPI object, but...
 		#endif				
 	#endif
 	#endif
