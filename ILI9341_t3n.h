@@ -1,4 +1,4 @@
-// https://github.com/PaulStoffregen/ILI9341_t3n
+// https://github.com/kurte/ILI9341_t3n
 // http://forum.pjrc.com/threads/26305-Highly-optimized-ILI9341-(320x240-TFT-color-display)-library
 //
 // Warning this is Kurt's hacked up version whcih allow different SPI busses, which hopefully 
@@ -87,6 +87,8 @@
 #endif
 #include <stdint.h>
 
+#include "ILI9341_fonts.h"
+
 #define ILI9341_TFTWIDTH  240
 #define ILI9341_TFTHEIGHT 320
 
@@ -173,25 +175,6 @@
 
 #define sint16_t int16_t
 
-typedef struct {
-	const unsigned char *index;
-	const unsigned char *unicode;
-	const unsigned char *data;
-	unsigned char version;
-	unsigned char reserved;
-	unsigned char index1_first;
-	unsigned char index1_last;
-	unsigned char index2_first;
-	unsigned char index2_last;
-	unsigned char bits_index;
-	unsigned char bits_width;
-	unsigned char bits_height;
-	unsigned char bits_xoffset;
-	unsigned char bits_yoffset;
-	unsigned char bits_delta;
-	unsigned char line_space;
-	unsigned char cap_height;
-} ILI9341_t3_font_t;
 // Lets see about supporting Adafruit fonts as well?
 #ifndef _GFXFONT_H_
 #define _GFXFONT_H_
