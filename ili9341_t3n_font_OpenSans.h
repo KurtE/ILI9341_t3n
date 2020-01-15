@@ -1,7 +1,7 @@
 #ifndef _ILI9341_t3_font_OpenSans_
 #define _ILI9341_t3_font_OpenSans_
 
-#include "ILI9341_t3n.h"
+#include "ILI9341_fonts.h"
 
 #ifdef __cplusplus
 extern "C" {
