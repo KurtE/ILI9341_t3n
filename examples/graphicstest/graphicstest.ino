@@ -14,7 +14,6 @@
  ****************************************************/
 
 
-#include <SPIN.h>
 #include "SPI.h"
 #include "ILI9341_t3n.h"
 #define SPI0_DISP1
@@ -30,8 +29,9 @@
 //#define SPI2_DISP
 
 #if defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x 
-#define TFT_DC  10  // only CS pin 
-#define TFT_CS 9    // using standard pin
+// Note: Using pin 10 as DC may be faster but set to 9 as more standard usage.
+#define TFT_DC  9  
+#define TFT_CS  10
 #define TFT_RST 8
 ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, TFT_RST);
 #elif defined(SPI0_DISP1)

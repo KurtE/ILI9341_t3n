@@ -236,7 +236,7 @@ class ILI9341_t3n : public Print
   public:
 	ILI9341_t3n(uint8_t _CS, uint8_t _DC, uint8_t _RST = 255, 
 		uint8_t _MOSI=11, uint8_t _SCLK=13, uint8_t _MISO=12);
-	void begin(void);
+	void begin(uint32_t spi_clock=ILI9341_SPICLOCK, uint32_t spi_clock_read=ILI9341_SPICLOCK_READ);
   	void sleep(bool enable);		
 	void pushColor(uint16_t color);
 	void fillScreen(uint16_t color);
@@ -435,7 +435,10 @@ class ILI9341_t3n : public Print
 	SPIClass *_pspi = nullptr;
 	SPIClass::SPI_Hardware_t *_spi_hardware;
 
-  	uint8_t   _spi_num;          // Which buss is this spi on? 
+  	uint8_t   	_spi_num;         	// Which buss is this spi on? 
+	uint32_t 	_SPI_CLOCK;			// #define ILI9341_SPICLOCK 30000000
+	uint32_t	_SPI_CLOCK_READ; 	//#define ILI9341_SPICLOCK_READ 2000000
+
 #if defined(KINETISK)
  	KINETISK_SPI_t *_pkinetisk_spi;
 #elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
@@ -611,7 +614,7 @@ class ILI9341_t3n : public Print
 	}
 #endif
 
-	void beginSPITransaction(uint32_t clock = ILI9341_SPICLOCK) __attribute__((always_inline)) {
+	void beginSPITransaction(uint32_t clock) __attribute__((always_inline)) {
 		_pspi->beginTransaction(SPISettings(clock, MSBFIRST, SPI_MODE0));
 		if (_csport) {
 #if defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x 

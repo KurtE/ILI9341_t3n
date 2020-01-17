@@ -369,7 +369,7 @@ void ILI9341_t3n::updateScreen(void)					// call to say update the screen now.
 	// Will go by buffer as maybe can do interesting things?
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_use_fbtft) {
-		beginSPITransaction();
+		beginSPITransaction(_SPI_CLOCK);
 		if (_standard) {
 			// Doing full window. 
 			setAddr(0, 0, _width-1, _height-1);
@@ -626,7 +626,7 @@ bool ILI9341_t3n::updateScreenAsync(bool update_cont)					// call to say update 
 #ifdef DEBUG_ASYNC_UPDATE
 	dumpDMASettings();
 #endif
-	beginSPITransaction();
+	beginSPITransaction(_SPI_CLOCK);
 
 	// Doing full window. 
 	setAddr(0, 0, _width-1, _height-1);
@@ -664,7 +664,7 @@ bool ILI9341_t3n::updateScreenAsync(bool update_cont)					// call to say update 
 	_dma_pixel_index = _dma_buffer_size*2;
 	_dma_sub_frame_count = 0;	// 
 
-	beginSPITransaction();
+	beginSPITransaction(_SPI_CLOCK);
 	// Doing full window. 
 	setAddr(0, 0, _width-1, _height-1);
 	writecommand_last(ILI9341_RAMWR);
@@ -709,7 +709,7 @@ bool ILI9341_t3n::updateScreenAsync(bool update_cont)					// call to say update 
 	dumpDMASettings();
 #endif
 
-	beginSPITransaction();
+	beginSPITransaction(_SPI_CLOCK);
 	// Doing full window. 
 	setAddr(0, 0, _width-1, _height-1);
 	writecommand_cont(ILI9341_RAMWR);
@@ -792,7 +792,7 @@ void ILI9341_t3n::waitUpdateAsyncComplete(void)
 
 void ILI9341_t3n::setAddrWindow(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1)
 {
-	beginSPITransaction();
+	beginSPITransaction(_SPI_CLOCK);
 	setAddr(x0, y0, x1, y1);
 	writecommand_last(ILI9341_RAMWR); // write to RAM
 	endSPITransaction();
@@ -800,7 +800,7 @@ void ILI9341_t3n::setAddrWindow(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t 
 
 void ILI9341_t3n::pushColor(uint16_t color)
 {
-	beginSPITransaction();
+	beginSPITransaction(_SPI_CLOCK);
 	writedata16_last(color);
 	endSPITransaction();
 }
@@ -817,7 +817,7 @@ void ILI9341_t3n::drawPixel(int16_t x, int16_t y, uint16_t color) {
 	} else 
 	#endif
 	{
-		beginSPITransaction();
+		beginSPITransaction(_SPI_CLOCK);
 		setAddr(x, y, x, y);
 		writecommand_cont(ILI9341_RAMWR);
 		writedata16_last(color);
@@ -845,7 +845,7 @@ void ILI9341_t3n::drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t color)
 	} else 
 	#endif
 	{
-		beginSPITransaction();
+		beginSPITransaction(_SPI_CLOCK);
 		setAddr(x, y, x, y+h-1);
 		writecommand_cont(ILI9341_RAMWR);
 		while (h-- > 1) {
@@ -886,7 +886,7 @@ void ILI9341_t3n::drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color)
 	} else 
 	#endif
 	{
-		beginSPITransaction();
+		beginSPITransaction(_SPI_CLOCK);
 		setAddr(x, y, x+w-1, y);
 		writecommand_cont(ILI9341_RAMWR);
 		while (w-- > 1) {
@@ -969,7 +969,7 @@ void ILI9341_t3n::fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 		// TODO: this can result in a very long transaction time
 		// should break this into multiple transactions, even though
 		// it'll cost more overhead, so we don't stall other SPI libs
-		beginSPITransaction();
+		beginSPITransaction(_SPI_CLOCK);
 		setAddr(x, y, x+w-1, y+h-1);
 		writecommand_cont(ILI9341_RAMWR);
 		for(y=h; y>0; y--) {
@@ -980,7 +980,7 @@ void ILI9341_t3n::fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 #if 0
 			if (y > 1 && (y & 1)) {
 				endSPITransaction();
-				beginSPITransaction();
+				beginSPITransaction(_SPI_CLOCK);
 			}
 #endif			
 		}
@@ -1038,7 +1038,7 @@ void ILI9341_t3n::fillRectVGradient(int16_t x, int16_t y, int16_t w, int16_t h, 
 	} else 
 	#endif
 	{		
-		beginSPITransaction();
+		beginSPITransaction(_SPI_CLOCK);
 		setAddr(x, y, x+w-1, y+h-1);
 		writecommand_cont(ILI9341_RAMWR);
 		for(y=h; y>0; y--) {
@@ -1050,7 +1050,7 @@ void ILI9341_t3n::fillRectVGradient(int16_t x, int16_t y, int16_t w, int16_t h, 
 			writedata16_last(color);
 			if (y > 1 && (y & 1)) {
 				endSPITransaction();
-				beginSPITransaction();
+				beginSPITransaction(_SPI_CLOCK);
 			}
 			r+=dr;g+=dg; b+=db;
 		}
@@ -1092,7 +1092,7 @@ void ILI9341_t3n::fillRectHGradient(int16_t x, int16_t y, int16_t w, int16_t h, 
 	} else 
 	#endif
 	{
-		beginSPITransaction();
+		beginSPITransaction(_SPI_CLOCK);
 		setAddr(x, y, x+w-1, y+h-1);
 		writecommand_cont(ILI9341_RAMWR);
 		for(y=h; y>0; y--) {
@@ -1105,7 +1105,7 @@ void ILI9341_t3n::fillRectHGradient(int16_t x, int16_t y, int16_t w, int16_t h, 
 			writedata16_last(color);
 			if (y > 1 && (y & 1)) {
 				endSPITransaction();
-				beginSPITransaction();
+				beginSPITransaction(_SPI_CLOCK);
 			}
 			r=r1;g=g1;b=b1;
 		}
@@ -1137,7 +1137,7 @@ void ILI9341_t3n::fillScreenHGradient(uint16_t color1, uint16_t color2)
 void ILI9341_t3n::setRotation(uint8_t m)
 {
 	rotation = m % 4; // can't be higher than 3
-	beginSPITransaction();
+	beginSPITransaction(_SPI_CLOCK);
 	writecommand_cont(ILI9341_MADCTL);
 	switch (rotation) {
 	case 0:
@@ -1171,7 +1171,7 @@ void ILI9341_t3n::setRotation(uint8_t m)
 
 void ILI9341_t3n::setScroll(uint16_t offset)
 {
-	beginSPITransaction();
+	beginSPITransaction(_SPI_CLOCK);
 	writecommand_cont(ILI9341_VSCRSADD);
 	writedata16_last(offset);
 	endSPITransaction();
@@ -1179,7 +1179,7 @@ void ILI9341_t3n::setScroll(uint16_t offset)
 
 void ILI9341_t3n::invertDisplay(boolean i)
 {
-	beginSPITransaction();
+	beginSPITransaction(_SPI_CLOCK);
 	writecommand_last(i ? ILI9341_INVON : ILI9341_INVOFF);
 	endSPITransaction();
 }
@@ -1225,7 +1225,7 @@ uint8_t ILI9341_t3n::readcommand8(uint8_t c, uint8_t index)
     uint16_t wTimeout = 0xffff;
     uint8_t r=0;
 
-    beginSPITransaction();
+    beginSPITransaction(_SPI_CLOCK);
 	if (_spi_num == 0) {
 		// Only SPI object has larger queue
 	    while (((_pkinetisk_spi->SR) & (15 << 12)) && (--wTimeout)) ; // wait until empty
@@ -1336,7 +1336,7 @@ uint8_t ILI9341_t3n::readcommand8(uint8_t c, uint8_t index)
     uint16_t wTimeout = 0xffff;
     uint8_t r=0;
 
-    beginSPITransaction(ILI9341_SPICLOCK_READ);
+    beginSPITransaction(_SPI_CLOCK_READ);
     // Lets assume that queues are empty as we just started transaction.
 	_pimxrt_spi->CR = LPSPI_CR_MEN | LPSPI_CR_RRF | LPSPI_CR_RTF;   // actually clear both...
     //writecommand(0xD9); // sekret command
@@ -1367,7 +1367,7 @@ uint8_t ILI9341_t3n::readcommand8(uint8_t c, uint8_t index)
     endSPITransaction();
     return r;  // get the received byte... should check for it first...
 #else
-	beginSPITransaction();
+	beginSPITransaction(_SPI_CLOCK);
 	writecommand_cont(0xD9);
 	writedata8_cont(0x10 + index);
 
@@ -1409,7 +1409,7 @@ uint16_t ILI9341_t3n::readPixel(int16_t x, int16_t y)
 	uint8_t dummy __attribute__((unused));
 	uint8_t r,g,b;
 
-	beginSPITransaction(ILI9341_SPICLOCK_READ);
+	beginSPITransaction(_SPI_CLOCK_READ);
 
 	// Update our origin. 
 	x+=_originx;
@@ -1477,7 +1477,7 @@ void ILI9341_t3n::readRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 	uint32_t txCount = w * h * 3; // number of bytes we will transmit to the display
 	uint32_t rxCount = txCount;   // number of bytes we will receive back from the display
 
-	beginSPITransaction(ILI9341_SPICLOCK_READ);
+	beginSPITransaction(_SPI_CLOCK_READ);
 
 	setAddr(x, y, x+w-1, y+h-1);
 	writecommand_cont(ILI9341_RAMRD); // read from RAM
@@ -1552,7 +1552,7 @@ void ILI9341_t3n::readRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 	uint32_t txCount = w * h * 3; // number of bytes we will transmit to the display
 	uint32_t rxCount = txCount;   // number of bytes we will receive back from the display
 
-	beginSPITransaction(ILI9341_SPICLOCK_READ);
+	beginSPITransaction(_SPI_CLOCK_READ);
 
 	setAddr(x, y, x+w-1, y+h-1);
 	writecommand_cont(ILI9341_RAMRD); // read from RAM
@@ -1608,7 +1608,7 @@ void ILI9341_t3n::readRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 	uint32_t txCount = w * h * 3; // number of bytes we will transmit to the display
 	uint32_t rxCount = txCount;   // number of bytes we will receive back from the display
 
-	beginSPITransaction(ILI9341_SPICLOCK_READ);
+	beginSPITransaction(_SPI_CLOCK_READ);
 
 	setAddr(x, y, x+w-1, y+h-1);
 	writecommand_cont(ILI9341_RAMRD); // read from RAM
@@ -1718,7 +1718,7 @@ void ILI9341_t3n::writeRect(int16_t x, int16_t y, int16_t w, int16_t h, const ui
 	}
 	#endif
 
-   	beginSPITransaction();
+   	beginSPITransaction(_SPI_CLOCK);
 	setAddr(x, y, x+w-1, y+h-1);
 	writecommand_cont(ILI9341_RAMWR);
 	for(y=h; y>0; y--) {
@@ -1789,7 +1789,7 @@ void ILI9341_t3n::writeRect8BPP(int16_t x, int16_t y, int16_t w, int16_t h, cons
 	}
 	#endif
 
-	beginSPITransaction();
+	beginSPITransaction(_SPI_CLOCK);
 	setAddr(x, y, x+w-1, y+h-1);
 	writecommand_cont(ILI9341_RAMWR);
 	for(y=h; y>0; y--) {
@@ -1915,7 +1915,7 @@ void ILI9341_t3n::writeRectNBPP(int16_t x, int16_t y, int16_t w, int16_t h,  uin
 	}
 	#endif
 
-	beginSPITransaction();
+	beginSPITransaction(_SPI_CLOCK);
 	setAddr(x, y, x+w-1, y+h-1);
 	writecommand_cont(ILI9341_RAMWR);
 	for (;h>0; h--) {
@@ -1962,11 +1962,14 @@ static const uint8_t init_commands[] = {
 	0
 };
 
-void ILI9341_t3n::begin(void)
+void ILI9341_t3n::begin(uint32_t spi_clock, uint32_t spi_clock_read)
 {
     // verify SPI pins are valid;
 	// allow user to say use current ones...
-	Serial.printf("_t3n::begin mosi:%d miso:%d SCLK:%d CS:%d DC:%d\n", _mosi, _miso, _sclk, _cs, _dc); Serial.flush();
+	_SPI_CLOCK = spi_clock;				// #define ILI9341_SPICLOCK 30000000
+	_SPI_CLOCK_READ = spi_clock_read; 	//#define ILI9341_SPICLOCK_READ 2000000
+
+	Serial.printf("_t3n::begin mosi:%d miso:%d SCLK:%d CS:%d DC:%d SPI clocks: %lu %lu\n", _mosi, _miso, _sclk, _cs, _dc, _SPI_CLOCK, _SPI_CLOCK_READ); Serial.flush();
 
 	if (SPI.pinIsMOSI(_mosi) && ((_miso == 0xff) || SPI.pinIsMISO(_miso)) && SPI.pinIsSCK(_sclk)) {
 		_pspi = &SPI;
@@ -2100,7 +2103,7 @@ void ILI9341_t3n::begin(void)
 	x = readcommand8(ILI9341_RDSELFDIAG);
 	Serial.print("\nSelf Diagnostic: 0x"); Serial.println(x, HEX);
 */	
-	beginSPITransaction();
+	beginSPITransaction(_SPI_CLOCK);
 	const uint8_t *addr = init_commands;
 	while (1) {
 		uint8_t count = *addr++;
@@ -2113,7 +2116,7 @@ void ILI9341_t3n::begin(void)
 	writecommand_last(ILI9341_SLPOUT);    // Exit Sleep
 	endSPITransaction();
 	delay(120); 		
-	beginSPITransaction();
+	beginSPITransaction(_SPI_CLOCK);
 	writecommand_last(ILI9341_DISPON);    // Display on
 	endSPITransaction();
 
@@ -2319,9 +2322,9 @@ void ILI9341_t3n::drawLine(int16_t x0, int16_t y0,
 	}
 
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
-  	if (!_use_fbtft) beginSPITransaction();
+  	if (!_use_fbtft) beginSPITransaction(_SPI_CLOCK);
   	#else
-	beginSPITransaction();
+	beginSPITransaction(_SPI_CLOCK);
   	#endif
 	int16_t xbegin = x0;
 	if (steep) {
@@ -2385,7 +2388,7 @@ void ILI9341_t3n::drawRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 	} else 
 	#endif
 	{
-	    beginSPITransaction();
+	    beginSPITransaction(_SPI_CLOCK);
 		HLine(x, y, w, color);
 		HLine(x, y+h-1, w, color);
 		VLine(x, y, h, color);
@@ -2740,7 +2743,7 @@ void ILI9341_t3n::drawChar(int16_t x, int16_t y, unsigned char c,
 			if(y < _displayclipy1) {	h -= (_displayclipy1 - y); y = _displayclipy1; 	}
 			if((y + h - 1) >= _displayclipy2) h = _displayclipy2 - y;
 
-			beginSPITransaction();
+			beginSPITransaction(_SPI_CLOCK);
 			setAddr(x, y, x + w -1, y + h - 1);
 
 			y = y_char_top;	// restore the actual y.
@@ -3249,7 +3252,7 @@ void ILI9341_t3n::drawFontChar(unsigned int c)
 		#endif
 		{
 
-			beginSPITransaction();
+			beginSPITransaction(_SPI_CLOCK);
 			//Serial.printf("SetAddr %d %d %d %d\n", start_x_min, start_y_min, end_x, end_y);
 			// output rectangle we are updating... We have already clipped end_x/y, but not yet start_x/y
 			setAddr( start_x, start_y_min, end_x, end_y);
@@ -3901,7 +3904,7 @@ void ILI9341_t3n::drawGFXFontChar(unsigned int c) {
 			// lets try to output text in one output rectangle
 			//Serial.printf("    SPI (%d %d) (%d %d)\n", x_start, y_start, x_end, y_end);Serial.flush();
 			// compute the actual region we will output given 
-			beginSPITransaction();
+			beginSPITransaction(_SPI_CLOCK);
 		
 			setAddr((x_start >= _displayclipx1) ? x_start : _displayclipx1, 
 					(y_start >= _displayclipy1) ? y_start : _displayclipy1, 
@@ -4087,7 +4090,7 @@ uint8_t ILI9341_t3n::getRotation(void) {
 }
 
 void ILI9341_t3n::sleep(bool enable) {
-	beginSPITransaction();
+	beginSPITransaction(_SPI_CLOCK);
 	if (enable) {
 		writecommand_cont(ILI9341_DISPOFF);		
 		writecommand_last(ILI9341_SLPIN);	
