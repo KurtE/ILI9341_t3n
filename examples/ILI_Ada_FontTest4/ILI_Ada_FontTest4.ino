@@ -15,8 +15,8 @@
 #define CENTER ILI9341_t3n::CENTER
 
 // maybe a few GFX FOnts?
-#include <Fonts/FreeMonoBoldOblique12pt7b.h>
-#include <Fonts/FreeSerif12pt7b.h>
+#include <Fonts/FreeMono9pt7b.h>
+#include <Fonts/FreeSerif9pt7b.h>
 
 typedef struct {
   const ILI9341_t3_font_t *ili_font;
@@ -28,18 +28,18 @@ typedef struct {
 
 
 const ili_fonts_test_t font_test_list[] = {
-  {&Arial_14, nullptr,  "Arial_14", ILI9341_WHITE, ILI9341_WHITE},
-  {&Arial_14_Bold, nullptr,  "ArialBold 14", ILI9341_YELLOW, ILI9341_YELLOW},
-  {&ComicSansMS_14, nullptr,  "ComicSansMS 14", ILI9341_GREEN, ILI9341_GREEN},
-  {&DroidSans_14, nullptr,  "DroidSans_14", ILI9341_WHITE, ILI9341_WHITE},
-  {&Michroma_14, nullptr,  "Michroma_14", ILI9341_YELLOW, ILI9341_YELLOW},
-  {&Crystal_24_Italic, nullptr,  "CRYSTAL_24", ILI9341_BLACK, ILI9341_YELLOW},
-  {&Chancery_24_Italic, nullptr,  "Chancery_24_Italic", ILI9341_GREEN, ILI9341_GREEN},
-  {&OpenSans24, nullptr,  "OpenSans 18", ILI9341_RED, ILI9341_YELLOW},
-  {nullptr, &FreeMonoBoldOblique12pt7b,  "GFX FreeMonoBoldOblique12pt7b", ILI9341_WHITE, ILI9341_WHITE},
-  {nullptr, &FreeMonoBoldOblique12pt7b,  "GFX FreeMonoBoldOblique12pt7b", ILI9341_RED, ILI9341_YELLOW},
-  {nullptr, &FreeSerif12pt7b,  "GFX FreeSerif12pt7b", ILI9341_WHITE, ILI9341_WHITE},
-  {nullptr, &FreeSerif12pt7b,  "GFX FreeSerif12pt7b", ILI9341_RED, ILI9341_YELLOW},
+  {&Arial_12, nullptr,  "Arial_12", ILI9341_WHITE, ILI9341_WHITE},
+  {&Arial_12_Bold, nullptr,  "ArialBold 12", ILI9341_YELLOW, ILI9341_YELLOW},
+  {&ComicSansMS_12, nullptr,  "ComicSansMS 12", ILI9341_GREEN, ILI9341_GREEN},
+  {&DroidSans_12, nullptr,  "DroidSans_12", ILI9341_WHITE, ILI9341_WHITE},
+  {&Michroma_12, nullptr,  "Michroma_12", ILI9341_YELLOW, ILI9341_YELLOW},
+  {&Crystal_16_Italic, nullptr,  "CRYSTAL_16", ILI9341_BLACK, ILI9341_YELLOW},
+  {&Chancery_16_Italic, nullptr,  "Chancery_16_Italic", ILI9341_GREEN, ILI9341_GREEN},
+  {&OpenSans16, nullptr,  "OpenSans 16", ILI9341_RED, ILI9341_YELLOW},
+  {nullptr, &FreeMono9pt7b,  "GFX FreeMono9pt7b", ILI9341_WHITE, ILI9341_WHITE},
+  {nullptr, &FreeMono9pt7b,  "GFX FreeMono9pt7b", ILI9341_RED, ILI9341_YELLOW},
+  {nullptr, &FreeSerif9pt7b,  "GFX FreeSerif9pt7b", ILI9341_WHITE, ILI9341_WHITE},
+  {nullptr, &FreeSerif9pt7b,  "GFX FreeSerif9pt7b", ILI9341_RED, ILI9341_YELLOW},
 
 } ;
 
@@ -64,47 +64,47 @@ void setup() {
   tft.fillWindow(ILI9341_BLACK);
 
   tft.setTextColor(ILI9341_WHITE);
-  tft.setFont(Arial_14);
-  tft.println("Arial_14");
+  tft.setFont(Arial_12);
+  tft.println("Arial_12");
   displayStuff();
 
   tft.setTextColor(ILI9341_YELLOW);
-  tft.setFont(Arial_14_Bold);
-  tft.println("ArialBold 14");
+  tft.setFont(Arial_12_Bold);
+  tft.println("ArialBold 12");
   displayStuff();
   nextPage();
   tft.setTextColor(ILI9341_GREEN);
-  tft.setFont(ComicSansMS_14);
-  tft.println("ComicSansMS 14");
+  tft.setFont(ComicSansMS_12);
+  tft.println("ComicSansMS 12");
   displayStuff();
 
 
   tft.setTextColor(ILI9341_WHITE);
-  tft.setFont(DroidSans_14);
-  tft.println("DroidSans_14");
+  tft.setFont(DroidSans_12);
+  tft.println("DroidSans_12");
   displayStuff();
   nextPage();
 
   tft.setTextColor(ILI9341_YELLOW);
-  tft.setFont(Michroma_14);
-  tft.println("Michroma_14");
+  tft.setFont(Michroma_12);
+  tft.println("Michroma_12");
   displayStuff();
 
   tft.setTextColor(ILI9341_BLACK, ILI9341_YELLOW);
-  tft.setFont(Crystal_24_Italic);
-  tft.println("CRYSTAL_24");
+  tft.setFont(Crystal_16_Italic);
+  tft.println("CRYSTAL_16");
   displayStuff();
 
   nextPage();
 
   tft.setTextColor(ILI9341_GREEN);
-  tft.setFont(Chancery_24_Italic);
-  tft.println("Chancery_24_Italic");
+  tft.setFont(Chancery_16_Italic);
+  tft.println("Chancery_16_Italic");
   displayStuff();
 
   //anti-alias font OpenSans
   tft.setTextColor(ILI9341_RED, ILI9341_YELLOW);
-  tft.setFont(OpenSans24);
+  tft.setFont(OpenSans16);
   tft.println("OpenSans 18");
   displayStuff();
 
