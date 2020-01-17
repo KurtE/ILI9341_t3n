@@ -333,7 +333,8 @@ class ILI9341_t3n : public Print
 	void drawChar(int16_t x, int16_t y, unsigned char c, uint16_t color, uint16_t bg, uint8_t size_x, uint8_t size_y);
 	void inline drawChar(int16_t x, int16_t y, unsigned char c, uint16_t color, uint16_t bg, uint8_t size) 
 	    { drawChar(x, y, c, color, bg, size);}
-	void setCursor(int16_t x, int16_t y);
+	static const int16_t CENTER = 9998;
+	void setCursor(int16_t x, int16_t y, bool autoCenter=false);
     void getCursor(int16_t *x, int16_t *y);
 	void setTextColor(uint16_t c);
 	void setTextColor(uint16_t c, uint16_t bg);
@@ -368,7 +369,10 @@ class ILI9341_t3n : public Print
 			 updateDisplayClip(); 
 		}
 
+	// overwrite print functions:
 	virtual size_t write(uint8_t);
+	virtual size_t write(const uint8_t *buffer, size_t size);
+
 	int16_t width(void)  { return _width; }
 	int16_t height(void) { return _height; }
 	uint8_t getRotation(void);
@@ -382,6 +386,8 @@ class ILI9341_t3n : public Print
 	void drawFontChar(unsigned int c);
 	void drawGFXFontChar(unsigned int c);
 
+    void getTextBounds(const uint8_t *buffer, uint16_t len, int16_t x, int16_t y,
+      int16_t *x1, int16_t *y1, uint16_t *w, uint16_t *h);
     void getTextBounds(const char *string, int16_t x, int16_t y,
       int16_t *x1, int16_t *y1, uint16_t *w, uint16_t *h);
     void getTextBounds(const String &str, int16_t x, int16_t y,
@@ -450,7 +456,8 @@ class ILI9341_t3n : public Print
 
 	int16_t _width, _height; // Display w/h as modified by current rotation
 	int16_t  cursor_x, cursor_y;
-
+	bool 	_center_x_text = false; 
+	bool 	_center_y_text = false; 
 	int16_t  _clipx1, _clipy1, _clipx2, _clipy2;
 	int16_t  _originx, _originy;
 	int16_t  _displayclipx1, _displayclipy1, _displayclipx2, _displayclipy2;
@@ -567,6 +574,7 @@ class ILI9341_t3n : public Print
 	  // as to move it out of the memory that is cached...
 
 	static const uint32_t _count_pixels = ILI9341_TFTWIDTH * ILI9341_TFTHEIGHT;
+
 	DMASetting   		_dmasettings[2];
 	DMAChannel   		_dmatx;
 	volatile    uint32_t _dma_pixel_index = 0;

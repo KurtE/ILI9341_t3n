@@ -2526,59 +2526,88 @@ void ILI9341_t3n::drawBitmap(int16_t x, int16_t y,
   }
 }
 
-size_t ILI9341_t3n::write(uint8_t c)
+// overwrite functions from class Print:
+
+size_t ILI9341_t3n::write(uint8_t c) {
+	return write(&c, 1);
+}
+
+size_t ILI9341_t3n::write(const uint8_t *buffer, size_t size)
 {
-	if (font) {
-		if (c == '\n') {
-			cursor_y += font->line_space;
-			if(scrollEnable && isWritingScrollArea){
-				cursor_x  = scroll_x;
-			}else{
-				cursor_x  = 0;
-			}
-		} else {
-			drawFontChar(c);
+	// Lets try to handle some of the special font centering code that was done for default fonts.
+	if (_center_x_text || _center_y_text ) {
+		int16_t x, y;
+	  	uint16_t strngWidth, strngHeight;
+	  	getTextBounds(buffer, size, 0, 0, &x, &y, &strngWidth, &strngHeight);
+	  	//Serial.printf("_fontwrite bounds: %d %d %u %u\n", x, y, strngWidth, strngHeight);
+	  	// Note we may want to play with the x ane y returned if they offset some
+		if (_center_x_text && strngWidth > 0){//Avoid operations for strngWidth = 0
+			cursor_x -= ((x + strngWidth) / 2);
 		}
-	} else if (gfxFont)  {
-		if (c == '\n') {
-            cursor_y += (int16_t)textsize_y * gfxFont->yAdvance;
-			if(scrollEnable && isWritingScrollArea){
-				cursor_x  = scroll_x;
-			}else{
-				cursor_x  = 0;
-			}
-		} else {
-			drawGFXFontChar(c);
+		if (_center_y_text && strngHeight > 0){//Avoid operations for strngWidth = 0
+			cursor_y -= ((y + strngHeight) / 2);
 		}
-	} else {
-		if (c == '\n') {
-			cursor_y += textsize_y*8;
-			if(scrollEnable && isWritingScrollArea){
-				cursor_x  = scroll_x;
-			}else{
-				cursor_x  = 0;
+		_center_x_text = false;
+		_center_y_text = false;
+	}
+
+	size_t cb = size;
+	while (cb) {
+		uint8_t c = *buffer++;
+		cb--;
+
+		if (font) {
+			if (c == '\n') {
+				cursor_y += font->line_space;
+				if(scrollEnable && isWritingScrollArea){
+					cursor_x  = scroll_x;
+				}else{
+					cursor_x  = 0;
+				}
+			} else {
+				drawFontChar(c);
 			}
-		} else if (c == '\r') {
-			// skip em
+		} else if (gfxFont)  {
+			if (c == '\n') {
+	            cursor_y += (int16_t)textsize_y * gfxFont->yAdvance;
+				if(scrollEnable && isWritingScrollArea){
+					cursor_x  = scroll_x;
+				}else{
+					cursor_x  = 0;
+				}
+			} else {
+				drawGFXFontChar(c);
+			}
 		} else {
-			if(scrollEnable && isWritingScrollArea && (cursor_y > (scroll_y+scroll_height - textsize_y*8))){
-				scrollTextArea(textsize_y*8);
-				cursor_y -= textsize_y*8;
-				cursor_x = scroll_x;
-			}
-			drawChar(cursor_x, cursor_y, c, textcolor, textbgcolor, textsize_x, textsize_y);
-			cursor_x += textsize_x*6;
-			if(wrap && scrollEnable && isWritingScrollArea && (cursor_x > (scroll_x+scroll_width - textsize_x*6))){
+			if (c == '\n') {
 				cursor_y += textsize_y*8;
-				cursor_x = scroll_x;
-			}
-			else if (wrap && (cursor_x > (_width - textsize_x*6))) {
-				cursor_y += textsize_y*6;
-				cursor_x = 0;
+				if(scrollEnable && isWritingScrollArea){
+					cursor_x  = scroll_x;
+				}else{
+					cursor_x  = 0;
+				}
+			} else if (c == '\r') {
+				// skip em
+			} else {
+				if(scrollEnable && isWritingScrollArea && (cursor_y > (scroll_y+scroll_height - textsize_y*8))){
+					scrollTextArea(textsize_y*8);
+					cursor_y -= textsize_y*8;
+					cursor_x = scroll_x;
+				}
+				drawChar(cursor_x, cursor_y, c, textcolor, textbgcolor, textsize_x, textsize_y);
+				cursor_x += textsize_x*6;
+				if(wrap && scrollEnable && isWritingScrollArea && (cursor_x > (scroll_x+scroll_width - textsize_x*6))){
+					cursor_y += textsize_y*8;
+					cursor_x = scroll_x;
+				}
+				else if (wrap && (cursor_x > (_width - textsize_x*6))) {
+					cursor_y += textsize_y*6;
+					cursor_x = 0;
+				}
 			}
 		}
 	}
-	return 1;
+	return size;
 }
 
 // Draw a character
@@ -3589,6 +3618,27 @@ void ILI9341_t3n::charBounds(char c, int16_t *x, int16_t *y,
 }
 
 // Add in Adafruit versions of text bounds calculations. 
+void ILI9341_t3n::getTextBounds(const uint8_t *buffer, uint16_t len, int16_t x, int16_t y,
+      int16_t *x1, int16_t *y1, uint16_t *w, uint16_t *h) {
+    *x1 = x;
+    *y1 = y;
+    *w  = *h = 0;
+
+    int16_t minx = _width, miny = _height, maxx = -1, maxy = -1;
+
+    while(len--)
+        charBounds(*buffer++, &x, &y, &minx, &miny, &maxx, &maxy);
+
+    if(maxx >= minx) {
+        *x1 = minx;
+        *w  = maxx - minx + 1;
+    }
+    if(maxy >= miny) {
+        *y1 = miny;
+        *h  = maxy - miny + 1;
+    }
+}
+
 void ILI9341_t3n::getTextBounds(const char *str, int16_t x, int16_t y,
         int16_t *x1, int16_t *y1, uint16_t *w, uint16_t *h) {
     uint8_t c; // Current character
@@ -4030,7 +4080,17 @@ bool ILI9341_t3n::gfxFontLastCharPosFG(int16_t x, int16_t y) {
 
 
 
-void ILI9341_t3n::setCursor(int16_t x, int16_t y) {
+void ILI9341_t3n::setCursor(int16_t x, int16_t y, bool autoCenter) {
+	_center_x_text = autoCenter;	// remember the state. 
+	_center_y_text = autoCenter;	// remember the state. 
+	if (x == ILI9341_t3n::CENTER) {
+		_center_x_text = true;
+		x = _width/2;
+	}
+	if (y == ILI9341_t3n::CENTER) {
+		_center_y_text = true;
+		y = _height/2;
+	}
 	if (x < 0) x = 0;
 	else if (x >= _width) x = _width - 1;
 	cursor_x = x;

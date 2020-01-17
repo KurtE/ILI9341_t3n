@@ -28,13 +28,13 @@ have one CS pin unless you use some form of adapter to use the SPI pins that are
 
 Frame Buffer
 ------------
-The teensy 3.6 and now 3.5 have a lot more memory than previous Teensy processors, so on these boards, I borrowed some ideas from the ILI9341_t3DMA library and added code to be able to use a logical Frame Buffer.  To enable this I added a couple of API's 
-
+The teensy 3.6 and now 3.5 and now the T4.0 have a lot more memory than previous Teensy processors, so on these boards, I borrowed some ideas from the ILI9341_t3DMA library and added code to be able to use a logical Frame Buffer.  To enable this I added a couple of API's 
+```c++
     uint8_t useFrameBuffer(boolean b) - if b non-zero it will allocate memory and start using
     void	freeFrameBuffer(void) - Will free up the memory that was used.
     void	updateScreen(void); - Will update the screen with all of your updates...
 	void	setFrameBuffer(uint16_t *frame_buffer); - Now have the ability allocate the frame buffer and pass it in, to avoid use of malloc
-
+```
 Asynchronous Update support (Frame buffer)
 ------------------------
 
@@ -42,21 +42,41 @@ The code now has support to use DMA for Asynchronous updates of the screen.  You
 oneshot as I prefer more control on when the screen updates which helps to minimize things like flashing and tearing. 
 Some of the New methods for this include: 
 
-
+```c++
 	bool	updateScreenAsync(bool update_cont = false); - Starts an update either one shot or continuous
 	void	waitUpdateAsyncComplete(void);  - Wait for any active update to complete
 	void	endUpdateAsync();			 - Turn of the continuous mode.
 	boolean	asyncUpdateActive(void)      - Lets you know if an async operation is still active
-
+```
 
 Additional APIs
 ---------------
 In addition, this library now has some of the API's and functionality that has been requested in a pull request.  In particular it now supports, the ability to set a clipping rectangle as well as setting an origin that is used with the drawing primitives.   These new API's include:
-
+```c++
 	void setOrigin(int16_t x = 0, int16_t y = 0); 
 	void getOrigin(int16_t* x, int16_t* y);
 	void setClipRect(int16_t x1, int16_t y1, int16_t w, int16_t h); 
 	void setClipRect();
+```
+
+This library borrows some concepts and functionality from other libraries as well, such as: from the TFT_ILI9341_ESP, https://github.com/Bodmer/TFT_ILI9341_ESP, for additional functions:
+```c++
+    int16_t  drawNumber(long long_num,int poX, int poY);
+    int16_t  drawFloat(float floatNumber,int decimal,int poX, int poY);   
+    int16_t drawString(const String& string, int poX, int poY);
+    int16_t drawString1(char string[], int16_t len, int poX, int poY);
+    void setTextDatum(uint8_t datum);
+```
+
+In addition, scrolling text has been added using appropriate function from, https://github.com/vitormhenrique/ILI9341_t3:
+```c++
+    void enableScroll(void);
+    void resetScrollBackgroundColor(uint16_t color);
+    void setScrollTextArea(int16_t x, int16_t y, int16_t w, int16_t h);
+    void setScrollBackgroundColor(uint16_t color);
+    void scrollTextArea(uint8_t scrollSize);
+    void resetScrollBackgroundColor(uint16_t color);
+```
 
 Font Support
 ------------
@@ -64,6 +84,17 @@ This library tries to support three different font types.  This includes the ori
 built in system font, as well as the new font format. 
 
 In addition, we added support to use the Adafruit GFX fonts as well. This includes the ability to output the text in Opaque mode. 
+
+The text output support also has been exteneded in a way similar to the RA8875 library to allow for easier centering of text. 
+
+The member function setCursor has been extended in a couple of ways:
+```c++
+	void setCursor(int16_t x, int16_t y, bool autoCenter=false);
+```
+if the autoCenter is true, the next text output will be centered at the given x, y location.  Note: this is only true for the NEXT output.  
+
+In addition you can pass in the magic value: ILI9341_t3n::CENTER for x and/or y and the next text output will be centered horizontally and/or vertically centered in the screen. 
+
 
 Discussion regarding this optimized version:
 ==========================
@@ -109,8 +140,6 @@ Also requires the Adafruit_GFX library for Arduino.
 Future Updates
 ==============
 
-I am hoping to phase out SPIN and be able to directly use SPI.  This has been helped by the recent updates to SPI, which all of the SPI objects are of one class. Currently I 
-still need a few additional things like pointers to the underlying SPI registers.  But hopefully will get there. 
 
 Again WIP
 =====
