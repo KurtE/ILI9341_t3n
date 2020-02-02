@@ -1667,6 +1667,8 @@ void ILI9341_t3n::readRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 void ILI9341_t3n::writeRect(int16_t x, int16_t y, int16_t w, int16_t h, const uint16_t *pcolors)
 {
 
+	if (x == CENTER) x = (_width - w) / 2;
+	if (y == CENTER) y = (_height - h) / 2;
 	x+=_originx;
 	y+=_originy;
 	uint16_t x_clip_left = 0;  // How many entries at start of colors to skip at start of row
