@@ -812,6 +812,7 @@ void ILI9341_t3n::drawPixel(int16_t x, int16_t y, uint16_t color) {
 
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_use_fbtft) {
+		updateChangedRange(x, y);		// update the range of the screen that has been changed;
 		_pfbtft[y*_width + x] = color;
 
 	} else 
@@ -837,6 +838,7 @@ void ILI9341_t3n::drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t color)
 
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_use_fbtft) {
+		updateChangedRange(x, y, 1, h);		// update the range of the screen that has been changed;
 		uint16_t * pfbPixel = &_pfbtft[ y*_width + x];
 		while (h--) {
 			*pfbPixel = color;
@@ -869,6 +871,7 @@ void ILI9341_t3n::drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color)
 
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_use_fbtft) {
+		updateChangedRange(x, y, w, 1);		// update the range of the screen that has been changed;
 		if ((x&1) || (w&1)) {
 			uint16_t * pfbPixel = &_pfbtft[ y*_width + x];
 			while (w--) {
@@ -902,6 +905,7 @@ void ILI9341_t3n::fillScreen(uint16_t color)
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_use_fbtft && _standard) {
 		// Speed up lifted from Franks DMA code... _standard is if no offsets and rects..
+		updateChangedRange(0, 0, _width, _height);		// update the range of the screen that has been changed;
 		uint32_t color32 = (color << 16) | color;
 
 		uint32_t *pfbPixel = (uint32_t *)_pfbtft;
@@ -940,6 +944,7 @@ void ILI9341_t3n::fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_use_fbtft) {
+		updateChangedRange(x, y, w, h);		// update the range of the screen that has been changed;
 		if ((x&1) || (w&1)) {
 			uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
 			for (;h>0; h--) {
@@ -1009,6 +1014,7 @@ void ILI9341_t3n::fillRectVGradient(int16_t x, int16_t y, int16_t w, int16_t h, 
 
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_use_fbtft) {
+		updateChangedRange(x, y, w, h);		// update the range of the screen that has been changed;
 		if ((x&1) || (w&1)) {
 			uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
 			for (;h>0; h--) {
@@ -1079,6 +1085,7 @@ void ILI9341_t3n::fillRectHGradient(int16_t x, int16_t y, int16_t w, int16_t h, 
 	r=r1;g=g1;b=b1;	
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_use_fbtft) {
+		updateChangedRange(x, y, w, h);		// update the range of the screen that has been changed;
 		uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
 		for (;h>0; h--) {
 			uint16_t * pfbPixel = pfbPixel_row;
@@ -1705,6 +1712,7 @@ void ILI9341_t3n::writeRect(int16_t x, int16_t y, int16_t w, int16_t h, const ui
 
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_use_fbtft) {
+		updateChangedRange(x, y, w, h);		// update the range of the screen that has been changed;
 		uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
 		for (;h>0; h--) {
 			uint16_t * pfbPixel = pfbPixel_row;
@@ -1777,6 +1785,7 @@ void ILI9341_t3n::writeRect8BPP(int16_t x, int16_t y, int16_t w, int16_t h, cons
 	//Serial.printf("WR8C: %d %d %d %d %x- %d %d\n", x, y, w, h, (uint32_t)pixels, x_clip_right, x_clip_left);
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_use_fbtft) {
+		updateChangedRange(x, y, w, h);		// update the range of the screen that has been changed;
 		uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
 		for (;h>0; h--) {
 			pixels += x_clip_left;
@@ -1894,6 +1903,7 @@ void ILI9341_t3n::writeRectNBPP(int16_t x, int16_t y, int16_t w, int16_t h,  uin
 
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_use_fbtft) {
+		updateChangedRange(x, y, w, h);		// update the range of the screen that has been changed;
 		uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
 		for (;h>0; h--) {
 			uint16_t * pfbPixel = pfbPixel_row;
@@ -2726,7 +2736,7 @@ void ILI9341_t3n::drawChar(int16_t x, int16_t y, unsigned char c,
 
 		#ifdef ENABLE_ILI9341_FRAMEBUFFER
 		if (_use_fbtft) {
-
+			updateChangedRange(x, y, 6 * size_x , 8 * size_y);		// update the range of the screen that has been changed;
 			uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
 			for (yc=0; (yc < 8) && (y < _displayclipy2); yc++) {
 				for (yr=0; (yr < size_y) && (y < _displayclipy2); yr++) {
@@ -3140,6 +3150,8 @@ void ILI9341_t3n::drawFontChar(unsigned int c)
 */
 		#ifdef ENABLE_ILI9341_FRAMEBUFFER
 		if (_use_fbtft) {
+			updateChangedRange(start_x, start_y);		// update the range of the screen that has been changed;
+			updateChangedRange(end_x, end_y);		// update the range of the screen that has been changed;
 			uint16_t * pfbPixel_row = &_pfbtft[ start_y*_width + start_x];
 			uint16_t * pfbPixel;
 			int screen_y = start_y;
@@ -3865,6 +3877,8 @@ void ILI9341_t3n::drawGFXFontChar(unsigned int c) {
 		#ifdef ENABLE_ILI9341_FRAMEBUFFER
 		if (_use_fbtft) {
 			// lets try to output the values directly...
+			updateChangedRange(x_start, y_start);		// update the range of the screen that has been changed;
+			updateChangedRange(x_end, y_end);		// update the range of the screen that has been changed;
 			uint16_t * pfbPixel_row = &_pfbtft[ y_start *_width + x_start];
 			uint16_t * pfbPixel;
 			// First lets fill in the top parts above the actual rectangle...

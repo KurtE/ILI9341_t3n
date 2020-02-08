@@ -556,6 +556,9 @@ class ILI9341_t3n : public Print
     uint16_t	*_pfbtft;						// Optional Frame buffer 
     uint8_t		_use_fbtft;						// Are we in frame buffer mode?
     uint16_t	*_we_allocated_buffer;			// We allocated the buffer; 
+	int16_t  	_changed_min_x, _changed_max_x, _changed_min_y, _changed_max_y;
+	bool 		_updateChangedAreasOnly = false;	// current default off, 
+
     // Add DMA support. 
 #if defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
     uint16_t	*_pfbtft_async;					// pointer to async buffer at start of async operation...
@@ -847,6 +850,38 @@ class ILI9341_t3n : public Print
 
 #endif
 
+	#ifdef ENABLE_ILI9341_FRAMEBUFFER
+	void clearChangedRange()
+		__attribute__((always_inline)) {
+		_changed_min_x = 0x7fff;
+		_changed_max_x = -1;
+		_changed_min_x = 0x7fff;
+		_changed_max_y = -1;
+  	}
+
+	void updateChangedRange(int16_t x, int16_t y, int16_t w, int16_t h)
+	  	__attribute__((always_inline)) {
+	 	if (x < _changed_min_x) _changed_min_x = x;	
+	 	if (y < _changed_min_y) _changed_min_y = y;	
+	 	x += w - 1;
+	 	y += h - 1;
+	 	if (x > _changed_max_x) _changed_max_x = x;	
+	 	if (y > _changed_max_y) _changed_max_y = y;	
+	}
+
+	// could combine with above, but avoids the +-...
+	void updateChangedRange(int16_t x, int16_t y)
+	  	__attribute__((always_inline)) {
+	 	if (x < _changed_min_x) _changed_min_x = x;	
+	 	if (y < _changed_min_y) _changed_min_y = y;	
+	 	if (x > _changed_max_x) _changed_max_x = x;	
+	 	if (y > _changed_max_y) _changed_max_y = y;	
+	}
+	#endif
+
+	void updateChangedAreasOnly(bool updateChangedOnly) {
+		_updateChangedAreasOnly = updateChangedOnly;
+	}
 
 	void HLine(int16_t x, int16_t y, int16_t w, uint16_t color)
 	  __attribute__((always_inline)) {
@@ -929,6 +964,7 @@ class ILI9341_t3n : public Print
 
 		#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	  	if (_use_fbtft) {
+			updateChangedRange(x, y);		// update the range of the screen that has been changed;
 	  		_pfbtft[y*_width + x] = color;
 	  		return;
 	  	}
