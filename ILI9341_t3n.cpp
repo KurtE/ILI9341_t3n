@@ -175,7 +175,7 @@ void ILI9341_t3n::process_dma_interrupt(void) {
 			_pimxrt_spi->SR = 0x3f00;	// clear out all of the other status...
 
 
-			maybeUpdateTCR(LPSPI_TCR_PCS(0) | LPSPI_TCR_FRAMESZ(7));	// output Command with 8 bits
+			maybeUpdateTCR(_tcr_dc_assert | LPSPI_TCR_FRAMESZ(7));	// output Command with 8 bits
 			// Serial.printf("Output NOP (SR %x CR %x FSR %x FCR %x %x TCR:%x)\n", _pimxrt_spi->SR, _pimxrt_spi->CR, _pimxrt_spi->FSR, 
 			//	_pimxrt_spi->FCR, _spi_fcr_save, _pimxrt_spi->TCR);
 			writecommand_last(ILI9341_NOP);
@@ -343,6 +343,7 @@ uint8_t ILI9341_t3n::useFrameBuffer(boolean b)		// use the frame buffer?  First 
 			memset(_pfbtft, 0, CBALLOC);	
 		}
 		_use_fbtft = 1;
+		clearChangedRange();	// make sure the dirty range is updated.
 	} else 
 		_use_fbtft = 0;
 
@@ -370,7 +371,7 @@ void ILI9341_t3n::updateScreen(void)					// call to say update the screen now.
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_use_fbtft) {
 		beginSPITransaction(_SPI_CLOCK);
-		if (_standard) {
+		if (_standard && !_updateChangedAreasOnly) {
 			// Doing full window. 
 			setAddr(0, 0, _width-1, _height-1);
 			writecommand_cont(ILI9341_RAMWR);
@@ -386,27 +387,44 @@ void ILI9341_t3n::updateScreen(void)					// call to say update the screen now.
 			}
 			writedata16_last(*pftbft);
 		} else {
-			// setup just to output the clip rectangle area. 
-			setAddr(_displayclipx1, _displayclipy1, _displayclipx2-1, _displayclipy2-1);
-			writecommand_cont(ILI9341_RAMWR);
+			// setup just to output the clip rectangle area anded with updated area if enabled
+			int16_t start_x = _displayclipx1;
+			int16_t start_y = _displayclipy1;
+			int16_t end_x = _displayclipx2 - 1; 
+			int16_t end_y = _displayclipy2 - 1;
 
-			// BUGBUG doing as one shot.  Not sure if should or not or do like
-			// main code and break up into transactions...
-			uint16_t * pfbPixel_row = &_pfbtft[ _displayclipy1*_width + _displayclipx1];
-			for (uint16_t y = _displayclipy1; y < _displayclipy2; y++) {
-				uint16_t * pfbPixel = pfbPixel_row;
-				for (uint16_t x = _displayclipx1; x < (_displayclipx2-1); x++) {
-					writedata16_cont(*pfbPixel++);
+			if (_updateChangedAreasOnly) {
+				// maybe update range of values to update...
+	 			if (_changed_min_x > start_x) start_x = _changed_min_x;
+	 			if (_changed_min_y > start_y) start_y = _changed_min_y;
+	 			if (_changed_max_x < end_x) end_x = _changed_max_x;
+	 			if (_changed_max_y < end_y) end_y = _changed_max_y;
+			}
+
+			// Only do if actual area to update
+			if ((start_x <= end_x) && (start_y <= end_y)) {
+				setAddr(start_x, start_y, end_x, end_y);
+				writecommand_cont(ILI9341_RAMWR);
+
+				// BUGBUG doing as one shot.  Not sure if should or not or do like
+				// main code and break up into transactions...
+				uint16_t * pfbPixel_row = &_pfbtft[ start_y*_width + start_x];
+				for (uint16_t y = start_y; y <= end_y; y++) {
+					uint16_t * pfbPixel = pfbPixel_row;
+					for (uint16_t x = start_x; x < end_x; x++) {
+						writedata16_cont(*pfbPixel++);
+					}
+					if (y < (end_y))
+						writedata16_cont(*pfbPixel);
+					else	
+						writedata16_last(*pfbPixel);
+					pfbPixel_row += _width;	// setup for the next row. 
 				}
-				if (y < (_displayclipy2-1))
-					writedata16_cont(*pfbPixel);
-				else	
-					writedata16_last(*pfbPixel);
-				pfbPixel_row += _width;	// setup for the next row. 
 			}
 		}
 		endSPITransaction();
 	}
+	clearChangedRange();	// make sure the dirty range is updated.	
 	#endif
 }			 
 
@@ -672,7 +690,7 @@ bool ILI9341_t3n::updateScreenAsync(bool update_cont)					// call to say update 
 	// Update TCR to 16 bit mode. and output the first entry.
 	_spi_fcr_save = _pimxrt_spi->FCR;	// remember the FCR
 	_pimxrt_spi->FCR = 0;	// clear water marks... 	
-	maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(15) | LPSPI_TCR_RXMSK /*| LPSPI_TCR_CONT*/);
+	maybeUpdateTCR(_tcr_dc_not_assert | LPSPI_TCR_FRAMESZ(15) | LPSPI_TCR_RXMSK /*| LPSPI_TCR_CONT*/);
  	_pimxrt_spi->DER = LPSPI_DER_TDDE;
 	_pimxrt_spi->SR = 0x3f00;	// clear out all of the other status...
 
@@ -1345,21 +1363,21 @@ uint8_t ILI9341_t3n::readcommand8(uint8_t c, uint8_t index)
 
     beginSPITransaction(_SPI_CLOCK_READ);
     // Lets assume that queues are empty as we just started transaction.
-	_pimxrt_spi->CR = LPSPI_CR_MEN | LPSPI_CR_RRF | LPSPI_CR_RTF;   // actually clear both...
+	_pimxrt_spi->CR = LPSPI_CR_MEN | LPSPI_CR_RRF /* | LPSPI_CR_RTF */;   // actually clear both...
     //writecommand(0xD9); // sekret command
-    maybeUpdateTCR(LPSPI_TCR_PCS(0) | LPSPI_TCR_FRAMESZ(7) | LPSPI_TCR_CONT);
+    maybeUpdateTCR(_tcr_dc_assert | LPSPI_TCR_FRAMESZ(7) | LPSPI_TCR_CONT);
 	_pimxrt_spi->TDR = 0xD9;
 
     // writedata(0x10 + index);
-	maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(7) | LPSPI_TCR_CONT);
+	maybeUpdateTCR(_tcr_dc_not_assert | LPSPI_TCR_FRAMESZ(7) | LPSPI_TCR_CONT);
 	_pimxrt_spi->TDR = 0x10 + index;
 
     // writecommand(c);
-    maybeUpdateTCR(LPSPI_TCR_PCS(0) | LPSPI_TCR_FRAMESZ(7) | LPSPI_TCR_CONT);
+    maybeUpdateTCR(_tcr_dc_assert | LPSPI_TCR_FRAMESZ(7) | LPSPI_TCR_CONT);
 	_pimxrt_spi->TDR = c;
 
     // readdata
-	maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(7));
+	maybeUpdateTCR(_tcr_dc_not_assert | LPSPI_TCR_FRAMESZ(7));
 	_pimxrt_spi->TDR = 0;
 
     // Now wait until completed.
@@ -1575,7 +1593,7 @@ void ILI9341_t3n::readRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 			if (txCount) {
 				_pimxrt_spi->TDR = 0;
 			} else {
-				maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(7)); // remove the CONTINUE...
+				maybeUpdateTCR(_tcr_dc_not_assert | LPSPI_TCR_FRAMESZ(7)); // remove the CONTINUE...
 				while ((_pimxrt_spi->SR & LPSPI_SR_TDF) == 0) ;		// wait if queue was full
 				_pimxrt_spi->TDR = 0;
 			}
@@ -2066,17 +2084,25 @@ void ILI9341_t3n::begin(uint32_t spi_clock, uint32_t spi_clock_read)
 
 	// TODO:  Need to setup DC to actually work.
 	if (_pspi->pinIsChipSelect(_dc)) {
-	 	_pspi->setCS(_dc);
+	 	uint8_t dc_cs_index = _pspi->setCS(_dc);
+	 	Serial.printf("    T4 hardware DC: %x\n", dc_cs_index);
 	 	_dcport = 0;
 	 	_dcpinmask = 0;
+	 	// will depend on which PCS but first get this to work...
+	 	dc_cs_index--;	// convert to 0 based
+		_tcr_dc_assert = LPSPI_TCR_PCS(dc_cs_index);
+    	_tcr_dc_not_assert = LPSPI_TCR_PCS(3);
 	} else {
-		//Serial.println("ILI9341_t3n: Error not DC is not valid hardware CS pin");
+		Serial.println("ILI9341_t3n: DC is not valid hardware CS pin");
 		_dcport = portOutputRegister(_dc);
 		_dcpinmask = digitalPinToBitMask(_dc);
 		pinMode(_dc, OUTPUT);	
 		DIRECT_WRITE_HIGH(_dcport, _dcpinmask);
+		_tcr_dc_assert = LPSPI_TCR_PCS(0);
+    	_tcr_dc_not_assert = LPSPI_TCR_PCS(1);
+
 	}
-	maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(7));
+	maybeUpdateTCR(_tcr_dc_not_assert | LPSPI_TCR_FRAMESZ(7));
 
 #else
 	// TLC
