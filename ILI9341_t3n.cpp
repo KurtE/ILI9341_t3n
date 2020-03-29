@@ -175,7 +175,7 @@ void ILI9341_t3n::process_dma_interrupt(void) {
 			_pimxrt_spi->SR = 0x3f00;	// clear out all of the other status...
 
 
-			maybeUpdateTCR(LPSPI_TCR_PCS(0) | LPSPI_TCR_FRAMESZ(7));	// output Command with 8 bits
+			maybeUpdateTCR(_tcr_dc_assert | LPSPI_TCR_FRAMESZ(7));	// output Command with 8 bits
 			// Serial.printf("Output NOP (SR %x CR %x FSR %x FCR %x %x TCR:%x)\n", _pimxrt_spi->SR, _pimxrt_spi->CR, _pimxrt_spi->FSR, 
 			//	_pimxrt_spi->FCR, _spi_fcr_save, _pimxrt_spi->TCR);
 			writecommand_last(ILI9341_NOP);
@@ -343,6 +343,7 @@ uint8_t ILI9341_t3n::useFrameBuffer(boolean b)		// use the frame buffer?  First 
 			memset(_pfbtft, 0, CBALLOC);	
 		}
 		_use_fbtft = 1;
+		clearChangedRange();	// make sure the dirty range is updated.
 	} else 
 		_use_fbtft = 0;
 
@@ -370,7 +371,7 @@ void ILI9341_t3n::updateScreen(void)					// call to say update the screen now.
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_use_fbtft) {
 		beginSPITransaction(_SPI_CLOCK);
-		if (_standard) {
+		if (_standard && !_updateChangedAreasOnly) {
 			// Doing full window. 
 			setAddr(0, 0, _width-1, _height-1);
 			writecommand_cont(ILI9341_RAMWR);
@@ -386,27 +387,44 @@ void ILI9341_t3n::updateScreen(void)					// call to say update the screen now.
 			}
 			writedata16_last(*pftbft);
 		} else {
-			// setup just to output the clip rectangle area. 
-			setAddr(_displayclipx1, _displayclipy1, _displayclipx2-1, _displayclipy2-1);
-			writecommand_cont(ILI9341_RAMWR);
+			// setup just to output the clip rectangle area anded with updated area if enabled
+			int16_t start_x = _displayclipx1;
+			int16_t start_y = _displayclipy1;
+			int16_t end_x = _displayclipx2 - 1; 
+			int16_t end_y = _displayclipy2 - 1;
 
-			// BUGBUG doing as one shot.  Not sure if should or not or do like
-			// main code and break up into transactions...
-			uint16_t * pfbPixel_row = &_pfbtft[ _displayclipy1*_width + _displayclipx1];
-			for (uint16_t y = _displayclipy1; y < _displayclipy2; y++) {
-				uint16_t * pfbPixel = pfbPixel_row;
-				for (uint16_t x = _displayclipx1; x < (_displayclipx2-1); x++) {
-					writedata16_cont(*pfbPixel++);
+			if (_updateChangedAreasOnly) {
+				// maybe update range of values to update...
+	 			if (_changed_min_x > start_x) start_x = _changed_min_x;
+	 			if (_changed_min_y > start_y) start_y = _changed_min_y;
+	 			if (_changed_max_x < end_x) end_x = _changed_max_x;
+	 			if (_changed_max_y < end_y) end_y = _changed_max_y;
+			}
+
+			// Only do if actual area to update
+			if ((start_x <= end_x) && (start_y <= end_y)) {
+				setAddr(start_x, start_y, end_x, end_y);
+				writecommand_cont(ILI9341_RAMWR);
+
+				// BUGBUG doing as one shot.  Not sure if should or not or do like
+				// main code and break up into transactions...
+				uint16_t * pfbPixel_row = &_pfbtft[ start_y*_width + start_x];
+				for (uint16_t y = start_y; y <= end_y; y++) {
+					uint16_t * pfbPixel = pfbPixel_row;
+					for (uint16_t x = start_x; x < end_x; x++) {
+						writedata16_cont(*pfbPixel++);
+					}
+					if (y < (end_y))
+						writedata16_cont(*pfbPixel);
+					else	
+						writedata16_last(*pfbPixel);
+					pfbPixel_row += _width;	// setup for the next row. 
 				}
-				if (y < (_displayclipy2-1))
-					writedata16_cont(*pfbPixel);
-				else	
-					writedata16_last(*pfbPixel);
-				pfbPixel_row += _width;	// setup for the next row. 
 			}
 		}
 		endSPITransaction();
 	}
+	clearChangedRange();	// make sure the dirty range is updated.	
 	#endif
 }			 
 
@@ -672,7 +690,7 @@ bool ILI9341_t3n::updateScreenAsync(bool update_cont)					// call to say update 
 	// Update TCR to 16 bit mode. and output the first entry.
 	_spi_fcr_save = _pimxrt_spi->FCR;	// remember the FCR
 	_pimxrt_spi->FCR = 0;	// clear water marks... 	
-	maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(15) | LPSPI_TCR_RXMSK /*| LPSPI_TCR_CONT*/);
+	maybeUpdateTCR(_tcr_dc_not_assert | LPSPI_TCR_FRAMESZ(15) | LPSPI_TCR_RXMSK /*| LPSPI_TCR_CONT*/);
  	_pimxrt_spi->DER = LPSPI_DER_TDDE;
 	_pimxrt_spi->SR = 0x3f00;	// clear out all of the other status...
 
@@ -812,6 +830,7 @@ void ILI9341_t3n::drawPixel(int16_t x, int16_t y, uint16_t color) {
 
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_use_fbtft) {
+		updateChangedRange(x, y);		// update the range of the screen that has been changed;
 		_pfbtft[y*_width + x] = color;
 
 	} else 
@@ -837,6 +856,7 @@ void ILI9341_t3n::drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t color)
 
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_use_fbtft) {
+		updateChangedRange(x, y, 1, h);		// update the range of the screen that has been changed;
 		uint16_t * pfbPixel = &_pfbtft[ y*_width + x];
 		while (h--) {
 			*pfbPixel = color;
@@ -869,6 +889,7 @@ void ILI9341_t3n::drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color)
 
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_use_fbtft) {
+		updateChangedRange(x, y, w, 1);		// update the range of the screen that has been changed;
 		if ((x&1) || (w&1)) {
 			uint16_t * pfbPixel = &_pfbtft[ y*_width + x];
 			while (w--) {
@@ -902,6 +923,7 @@ void ILI9341_t3n::fillScreen(uint16_t color)
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_use_fbtft && _standard) {
 		// Speed up lifted from Franks DMA code... _standard is if no offsets and rects..
+		updateChangedRange(0, 0, _width, _height);		// update the range of the screen that has been changed;
 		uint32_t color32 = (color << 16) | color;
 
 		uint32_t *pfbPixel = (uint32_t *)_pfbtft;
@@ -940,6 +962,7 @@ void ILI9341_t3n::fillRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_use_fbtft) {
+		updateChangedRange(x, y, w, h);		// update the range of the screen that has been changed;
 		if ((x&1) || (w&1)) {
 			uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
 			for (;h>0; h--) {
@@ -1009,6 +1032,7 @@ void ILI9341_t3n::fillRectVGradient(int16_t x, int16_t y, int16_t w, int16_t h, 
 
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_use_fbtft) {
+		updateChangedRange(x, y, w, h);		// update the range of the screen that has been changed;
 		if ((x&1) || (w&1)) {
 			uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
 			for (;h>0; h--) {
@@ -1079,6 +1103,7 @@ void ILI9341_t3n::fillRectHGradient(int16_t x, int16_t y, int16_t w, int16_t h, 
 	r=r1;g=g1;b=b1;	
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_use_fbtft) {
+		updateChangedRange(x, y, w, h);		// update the range of the screen that has been changed;
 		uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
 		for (;h>0; h--) {
 			uint16_t * pfbPixel = pfbPixel_row;
@@ -1338,21 +1363,21 @@ uint8_t ILI9341_t3n::readcommand8(uint8_t c, uint8_t index)
 
     beginSPITransaction(_SPI_CLOCK_READ);
     // Lets assume that queues are empty as we just started transaction.
-	_pimxrt_spi->CR = LPSPI_CR_MEN | LPSPI_CR_RRF | LPSPI_CR_RTF;   // actually clear both...
+	_pimxrt_spi->CR = LPSPI_CR_MEN | LPSPI_CR_RRF /* | LPSPI_CR_RTF */;   // actually clear both...
     //writecommand(0xD9); // sekret command
-    maybeUpdateTCR(LPSPI_TCR_PCS(0) | LPSPI_TCR_FRAMESZ(7) | LPSPI_TCR_CONT);
+    maybeUpdateTCR(_tcr_dc_assert | LPSPI_TCR_FRAMESZ(7) | LPSPI_TCR_CONT);
 	_pimxrt_spi->TDR = 0xD9;
 
     // writedata(0x10 + index);
-	maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(7) | LPSPI_TCR_CONT);
+	maybeUpdateTCR(_tcr_dc_not_assert | LPSPI_TCR_FRAMESZ(7) | LPSPI_TCR_CONT);
 	_pimxrt_spi->TDR = 0x10 + index;
 
     // writecommand(c);
-    maybeUpdateTCR(LPSPI_TCR_PCS(0) | LPSPI_TCR_FRAMESZ(7) | LPSPI_TCR_CONT);
+    maybeUpdateTCR(_tcr_dc_assert | LPSPI_TCR_FRAMESZ(7) | LPSPI_TCR_CONT);
 	_pimxrt_spi->TDR = c;
 
     // readdata
-	maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(7));
+	maybeUpdateTCR(_tcr_dc_not_assert | LPSPI_TCR_FRAMESZ(7));
 	_pimxrt_spi->TDR = 0;
 
     // Now wait until completed.
@@ -1568,7 +1593,7 @@ void ILI9341_t3n::readRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t 
 			if (txCount) {
 				_pimxrt_spi->TDR = 0;
 			} else {
-				maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(7)); // remove the CONTINUE...
+				maybeUpdateTCR(_tcr_dc_not_assert | LPSPI_TCR_FRAMESZ(7)); // remove the CONTINUE...
 				while ((_pimxrt_spi->SR & LPSPI_SR_TDF) == 0) ;		// wait if queue was full
 				_pimxrt_spi->TDR = 0;
 			}
@@ -1705,6 +1730,7 @@ void ILI9341_t3n::writeRect(int16_t x, int16_t y, int16_t w, int16_t h, const ui
 
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_use_fbtft) {
+		updateChangedRange(x, y, w, h);		// update the range of the screen that has been changed;
 		uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
 		for (;h>0; h--) {
 			uint16_t * pfbPixel = pfbPixel_row;
@@ -1777,6 +1803,7 @@ void ILI9341_t3n::writeRect8BPP(int16_t x, int16_t y, int16_t w, int16_t h, cons
 	//Serial.printf("WR8C: %d %d %d %d %x- %d %d\n", x, y, w, h, (uint32_t)pixels, x_clip_right, x_clip_left);
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_use_fbtft) {
+		updateChangedRange(x, y, w, h);		// update the range of the screen that has been changed;
 		uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
 		for (;h>0; h--) {
 			pixels += x_clip_left;
@@ -1894,6 +1921,7 @@ void ILI9341_t3n::writeRectNBPP(int16_t x, int16_t y, int16_t w, int16_t h,  uin
 
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	if (_use_fbtft) {
+		updateChangedRange(x, y, w, h);		// update the range of the screen that has been changed;
 		uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
 		for (;h>0; h--) {
 			uint16_t * pfbPixel = pfbPixel_row;
@@ -2047,7 +2075,7 @@ void ILI9341_t3n::begin(uint32_t spi_clock, uint32_t spi_clock_read)
 		}
 	}
 #elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x 
-	Serial.println("   T4 setup CS/DC"); Serial.flush();
+	// Serial.println("   T4 setup CS/DC"); Serial.flush();
 	_csport = portOutputRegister(_cs);
 	_cspinmask = digitalPinToBitMask(_cs);
 	pinMode(_cs, OUTPUT);	
@@ -2056,17 +2084,25 @@ void ILI9341_t3n::begin(uint32_t spi_clock, uint32_t spi_clock_read)
 
 	// TODO:  Need to setup DC to actually work.
 	if (_pspi->pinIsChipSelect(_dc)) {
-	 	_pspi->setCS(_dc);
+	 	uint8_t dc_cs_index = _pspi->setCS(_dc);
+	 	// Serial.printf("    T4 hardware DC: %x\n", dc_cs_index);
 	 	_dcport = 0;
 	 	_dcpinmask = 0;
+	 	// will depend on which PCS but first get this to work...
+	 	dc_cs_index--;	// convert to 0 based
+		_tcr_dc_assert = LPSPI_TCR_PCS(dc_cs_index);
+    	_tcr_dc_not_assert = LPSPI_TCR_PCS(3);
 	} else {
-		//Serial.println("ILI9341_t3n: Error not DC is not valid hardware CS pin");
+		//Serial.println("ILI9341_t3n: DC is not valid hardware CS pin");
 		_dcport = portOutputRegister(_dc);
 		_dcpinmask = digitalPinToBitMask(_dc);
 		pinMode(_dc, OUTPUT);	
 		DIRECT_WRITE_HIGH(_dcport, _dcpinmask);
+		_tcr_dc_assert = LPSPI_TCR_PCS(0);
+    	_tcr_dc_not_assert = LPSPI_TCR_PCS(1);
+
 	}
-	maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(7));
+	maybeUpdateTCR(_tcr_dc_not_assert | LPSPI_TCR_FRAMESZ(7));
 
 #else
 	// TLC
@@ -2726,7 +2762,7 @@ void ILI9341_t3n::drawChar(int16_t x, int16_t y, unsigned char c,
 
 		#ifdef ENABLE_ILI9341_FRAMEBUFFER
 		if (_use_fbtft) {
-
+			updateChangedRange(x, y, 6 * size_x , 8 * size_y);		// update the range of the screen that has been changed;
 			uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
 			for (yc=0; (yc < 8) && (y < _displayclipy2); yc++) {
 				for (yr=0; (yr < size_y) && (y < _displayclipy2); yr++) {
@@ -3140,6 +3176,8 @@ void ILI9341_t3n::drawFontChar(unsigned int c)
 */
 		#ifdef ENABLE_ILI9341_FRAMEBUFFER
 		if (_use_fbtft) {
+			updateChangedRange(start_x, start_y);		// update the range of the screen that has been changed;
+			updateChangedRange(end_x, end_y);		// update the range of the screen that has been changed;
 			uint16_t * pfbPixel_row = &_pfbtft[ start_y*_width + start_x];
 			uint16_t * pfbPixel;
 			int screen_y = start_y;
@@ -3865,6 +3903,8 @@ void ILI9341_t3n::drawGFXFontChar(unsigned int c) {
 		#ifdef ENABLE_ILI9341_FRAMEBUFFER
 		if (_use_fbtft) {
 			// lets try to output the values directly...
+			updateChangedRange(x_start, y_start);		// update the range of the screen that has been changed;
+			updateChangedRange(x_end, y_end);		// update the range of the screen that has been changed;
 			uint16_t * pfbPixel_row = &_pfbtft[ y_start *_width + x_start];
 			uint16_t * pfbPixel;
 			// First lets fill in the top parts above the actual rectangle...

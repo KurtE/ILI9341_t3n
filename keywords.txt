@@ -76,6 +76,8 @@ updateScreen	KEYWORD2
 updateScreenAsync	KEYWORD2
 waitUpdateAsyncComplete	KEYWORD2
 endUpdateAsync	KEYWORD2
+updateChangedAreasOnly	KEYWORD2
+clearChangedRange	KEYWORD2;
 frameCount	KEYWORD2
 asyncUpdateActive	KEYWORD2
 freeFrameBuffer	KEYWORD2

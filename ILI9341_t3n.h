@@ -542,6 +542,8 @@ class ILI9341_t3n : public Print
     volatile uint32_t *_csport;
     uint32_t _spi_tcr_current;
     uint32_t _dcpinmask;
+    uint32_t _tcr_dc_assert;
+    uint32_t _tcr_dc_not_assert;
     volatile uint32_t *_dcport;
 #else
     uint8_t _cspinmask;
@@ -556,6 +558,9 @@ class ILI9341_t3n : public Print
     uint16_t	*_pfbtft;						// Optional Frame buffer 
     uint8_t		_use_fbtft;						// Are we in frame buffer mode?
     uint16_t	*_we_allocated_buffer;			// We allocated the buffer; 
+	int16_t  	_changed_min_x, _changed_max_x, _changed_min_y, _changed_max_y;
+	bool 		_updateChangedAreasOnly = false;	// current default off, 
+
     // Add DMA support. 
 #if defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
     uint16_t	*_pfbtft_async;					// pointer to async buffer at start of async operation...
@@ -624,6 +629,9 @@ class ILI9341_t3n : public Print
 
 	void beginSPITransaction(uint32_t clock) __attribute__((always_inline)) {
 		_pspi->beginTransaction(SPISettings(clock, MSBFIRST, SPI_MODE0));
+		#if defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x 
+		if (!_dcport) _spi_tcr_current = _pimxrt_spi->TCR; 	// Only if DC is on hardware CS 
+		#endif
 		if (_csport) {
 #if defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x 
 			DIRECT_WRITE_LOW(_csport, _cspinmask);
@@ -693,39 +701,39 @@ class ILI9341_t3n : public Print
 
 	// BUGBUG:: currently assumming we only have CS_0 as valid CS
 	void writecommand_cont(uint8_t c) __attribute__((always_inline)) {
-		maybeUpdateTCR(LPSPI_TCR_PCS(0) | LPSPI_TCR_FRAMESZ(7) /*| LPSPI_TCR_CONT*/);
+		maybeUpdateTCR(_tcr_dc_assert | LPSPI_TCR_FRAMESZ(7) /*| LPSPI_TCR_CONT*/);
 		_pimxrt_spi->TDR = c;
 		pending_rx_count++;	//
 		waitFifoNotFull();
 	}
 	void writedata8_cont(uint8_t c) __attribute__((always_inline)) {
-		maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(7) | LPSPI_TCR_CONT);
+		maybeUpdateTCR(_tcr_dc_not_assert | LPSPI_TCR_FRAMESZ(7) | LPSPI_TCR_CONT);
 		_pimxrt_spi->TDR = c;
 		pending_rx_count++;	//
 		waitFifoNotFull();
 	}
 	void writedata16_cont(uint16_t d) __attribute__((always_inline)) {
-		maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(15) | LPSPI_TCR_CONT);
+		maybeUpdateTCR(_tcr_dc_not_assert | LPSPI_TCR_FRAMESZ(15) | LPSPI_TCR_CONT);
 		_pimxrt_spi->TDR = d;
 		pending_rx_count++;	//
 		waitFifoNotFull();
 	}
 	void writecommand_last(uint8_t c) __attribute__((always_inline)) {
-		maybeUpdateTCR(LPSPI_TCR_PCS(0) | LPSPI_TCR_FRAMESZ(7));
+		maybeUpdateTCR(_tcr_dc_assert | LPSPI_TCR_FRAMESZ(7));
 		_pimxrt_spi->TDR = c;
 //		_pimxrt_spi->SR = LPSPI_SR_WCF | LPSPI_SR_FCF | LPSPI_SR_TCF;
 		pending_rx_count++;	//
 		waitTransmitComplete();
 	}
 	void writedata8_last(uint8_t c) __attribute__((always_inline)) {
-		maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(7));
+		maybeUpdateTCR(_tcr_dc_not_assert | LPSPI_TCR_FRAMESZ(7));
 		_pimxrt_spi->TDR = c;
 //		_pimxrt_spi->SR = LPSPI_SR_WCF | LPSPI_SR_FCF | LPSPI_SR_TCF;
 		pending_rx_count++;	//
 		waitTransmitComplete();
 	}
 	void writedata16_last(uint16_t d) __attribute__((always_inline)) {
-		maybeUpdateTCR(LPSPI_TCR_PCS(1) | LPSPI_TCR_FRAMESZ(15));
+		maybeUpdateTCR(_tcr_dc_not_assert | LPSPI_TCR_FRAMESZ(15));
 		_pimxrt_spi->TDR = d;
 //		_pimxrt_spi->SR = LPSPI_SR_WCF | LPSPI_SR_FCF | LPSPI_SR_TCF;
 		pending_rx_count++;	//
@@ -847,6 +855,37 @@ class ILI9341_t3n : public Print
 
 #endif
 
+	#ifdef ENABLE_ILI9341_FRAMEBUFFER
+	void clearChangedRange() {
+		_changed_min_x = 0x7fff;
+		_changed_max_x = -1;
+		_changed_min_x = 0x7fff;
+		_changed_max_y = -1;
+  	}
+
+	void updateChangedRange(int16_t x, int16_t y, int16_t w, int16_t h)
+	  	__attribute__((always_inline)) {
+	 	if (x < _changed_min_x) _changed_min_x = x;	
+	 	if (y < _changed_min_y) _changed_min_y = y;	
+	 	x += w - 1;
+	 	y += h - 1;
+	 	if (x > _changed_max_x) _changed_max_x = x;	
+	 	if (y > _changed_max_y) _changed_max_y = y;	
+	}
+
+	// could combine with above, but avoids the +-...
+	void updateChangedRange(int16_t x, int16_t y)
+	  	__attribute__((always_inline)) {
+	 	if (x < _changed_min_x) _changed_min_x = x;	
+	 	if (y < _changed_min_y) _changed_min_y = y;	
+	 	if (x > _changed_max_x) _changed_max_x = x;	
+	 	if (y > _changed_max_y) _changed_max_y = y;	
+	}
+	#endif
+
+	void updateChangedAreasOnly(bool updateChangedOnly) {
+		_updateChangedAreasOnly = updateChangedOnly;
+	}
 
 	void HLine(int16_t x, int16_t y, int16_t w, uint16_t color)
 	  __attribute__((always_inline)) {
@@ -929,6 +968,7 @@ class ILI9341_t3n : public Print
 
 		#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	  	if (_use_fbtft) {
+			updateChangedRange(x, y);		// update the range of the screen that has been changed;
 	  		_pfbtft[y*_width + x] = color;
 	  		return;
 	  	}
