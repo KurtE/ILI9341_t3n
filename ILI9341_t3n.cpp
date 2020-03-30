@@ -1989,6 +1989,7 @@ static const uint8_t init_commands[] = {
 		0x4E, 0xF1, 0x37, 0x07, 0x10, 0x03, 0x0E, 0x09, 0x00, // Set Gamma
 	16, ILI9341_GMCTRN1, 0x00, 0x0E, 0x14, 0x03, 0x11, 0x07,
 		0x31, 0xC1, 0x48, 0x08, 0x0F, 0x0C, 0x31, 0x36, 0x0F, // Set Gamma
+	3, 0xb1, 0x00, 0x10, // FrameRate Control 119Hz
 	0
 };
 
@@ -2009,7 +2010,7 @@ void ILI9341_t3n::begin(uint32_t spi_clock, uint32_t spi_clock_read)
 		_fifo_full_test = (3 << 12);
 		#elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x 
 		_pimxrt_spi = &IMXRT_LPSPI4_S;  // Could hack our way to grab this from SPI object, but...
-	#else
+		#else
 		_pkinetisl_spi = &KINETISL_SPI0;
 		#endif				
 	
