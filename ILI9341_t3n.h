@@ -74,6 +74,8 @@
 #define SCREEN_DMA_NUM_SETTINGS 3 // see if making it a constant value makes difference...
 #elif defined(__IMXRT1052__) || defined(__IMXRT1062__)
 #define ENABLE_ILI9341_FRAMEBUFFER
+#define TRY_FULL_DMA_CHAIN
+#define SCREEN_DMA_NUM_SETTINGS 3 // see if making it a constant value makes difference...
 #endif
 #endif
 
@@ -430,10 +432,13 @@ class ILI9341_t3n : public Print
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	uint16_t *getFrameBuffer() {return _pfbtft;}
 	uint32_t frameCount() {return _dma_frame_count; }
+	uint16_t subFrameCount() {return _dma_sub_frame_count; }
 	boolean	asyncUpdateActive(void)  {return (_dma_state & ILI9341_DMA_ACTIVE);}
 	void	initDMASettings(void);
+	void	setFrameCompleteCB(void (*pcb)(), bool fCallAlsoHalfDone=false);
 	#else
 	uint32_t frameCount() {return 0; }
+	uint16_t subFrameCount() {return 0; }
 	uint16_t *getFrameBuffer() {return NULL;}
 	boolean	asyncUpdateActive(void)  {return false;}
 	#endif
@@ -560,6 +565,8 @@ class ILI9341_t3n : public Print
     uint16_t	*_we_allocated_buffer;			// We allocated the buffer; 
 	int16_t  	_changed_min_x, _changed_max_x, _changed_min_y, _changed_max_y;
 	bool 		_updateChangedAreasOnly = false;	// current default off, 
+	void		(*_frame_complete_callback)() = nullptr;
+	bool 		_frame_callback_on_HalfDone = false;
 
     // Add DMA support. 
 #if defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
@@ -579,16 +586,20 @@ class ILI9341_t3n : public Print
 	  // as to move it out of the memory that is cached...
 
 	static const uint32_t _count_pixels = ILI9341_TFTWIDTH * ILI9341_TFTHEIGHT;
+	#if defined(TRY_FULL_DMA_CHAIN)
+	DMASetting   		_dmasettings[3];
+	#else
 
 	DMASetting   		_dmasettings[2];
+	static const uint16_t    DMA_BUFFER_SIZE = 960;
+	uint16_t          	_dma_buffer1[DMA_BUFFER_SIZE] __attribute__ ((aligned(4)));
+	uint16_t          	_dma_buffer2[DMA_BUFFER_SIZE] __attribute__ ((aligned(4)));
+	#endif
 	DMAChannel   		_dmatx;
 	volatile    uint32_t _dma_pixel_index = 0;
 	volatile uint16_t 	_dma_sub_frame_count = 0; // Can return a frame count...
 	uint16_t          	_dma_buffer_size;   // the actual size we are using <= DMA_BUFFER_SIZE;
 	uint16_t          	_dma_cnt_sub_frames_per_frame;  
-	static const uint16_t    DMA_BUFFER_SIZE = 960;
-	uint16_t          	_dma_buffer1[DMA_BUFFER_SIZE] __attribute__ ((aligned(4)));
-	uint16_t          	_dma_buffer2[DMA_BUFFER_SIZE] __attribute__ ((aligned(4)));
 	uint32_t 				_spi_fcr_save;		// save away previous FCR register value
 	static void dmaInterrupt1(void);
 	static void dmaInterrupt2(void);
