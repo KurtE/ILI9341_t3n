@@ -577,6 +577,7 @@ class ILI9341_t3n : public Print
 #endif
 	volatile uint8_t  	_dma_state = 0;  		// DMA status
 	volatile uint32_t	_dma_frame_count = 0;	// Can return a frame count...
+	volatile uint16_t 	_dma_sub_frame_count = 0; // Can return a frame count...
 	#if defined(__MK66FX1M0__) 
 	// T3.6 use Scatter/gather with chain to do transfer
 	static DMASetting 	_dmasettings[4];
@@ -597,7 +598,6 @@ class ILI9341_t3n : public Print
 	#endif
 	DMAChannel   		_dmatx;
 	volatile    uint32_t _dma_pixel_index = 0;
-	volatile uint16_t 	_dma_sub_frame_count = 0; // Can return a frame count...
 	uint16_t          	_dma_buffer_size;   // the actual size we are using <= DMA_BUFFER_SIZE;
 	uint16_t          	_dma_cnt_sub_frames_per_frame;  
 	uint32_t 				_spi_fcr_save;		// save away previous FCR register value

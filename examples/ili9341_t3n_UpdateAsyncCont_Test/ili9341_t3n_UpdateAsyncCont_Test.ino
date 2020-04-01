@@ -15,10 +15,24 @@ elapsedMicros _dt;
 
 
 //------------------------------------
+#if defined(ARDUINO_TEENSY35) || defined(ARDUINO_TEENSY36)
+// currently my flexi...
+#define TFT_DC 22
+#define TFT_CS 15
+#define TFT_RST -1
+#define TFT_SCK 14
+#define TFT_MISO 12
+#define TFT_MOSI 7
+#define DEBUG_PIN 13
+#else
 #define TFT_RST 8
 #define TFT_DC  9
 #define TFT_CS 10
-ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, TFT_RST);
+#define TFT_MOSI 11
+#define TFT_MISO 12
+#define TFT_SCK 13
+#endif
+ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, TFT_RST, TFT_MOSI, TFT_SCK, TFT_MISO);
 
 uint16_t our_pallet[] = {
   ILI9341_BLACK,  ILI9341_RED, ILI9341_GREEN,  ILI9341_BLUE,

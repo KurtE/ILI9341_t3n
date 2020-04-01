@@ -125,20 +125,36 @@ void ILI9341_t3n::process_dma_interrupt(void) {
 #endif
 #if defined(__MK66FX1M0__) 
 	// T3.6
-	_dma_frame_count++;
 	_dmatx.clearInterrupt();
-
-	// See if we are in continuous mode or not..
-	if ((_dma_state & ILI9341_DMA_CONT) == 0) {
-		// We are in single refresh mode or the user has called cancel so
-		// Lets try to release the CS pin
-		waitFifoNotFull();
-		writecommand_last(ILI9341_NOP);
-		endSPITransaction();
-		_dma_state &= ~ILI9341_DMA_ACTIVE;
-		_dmaActiveDisplay = 0;	// We don't have a display active any more... 
+	#ifdef DEBUG_ASYNC_UPDATE
+	static uint8_t print_count;
+	if (print_count < 10) {
+		print_count++;
+		Serial.printf("TCD: %x D1:%x %x%c\n", (uint32_t)_dmatx.TCD->SADDR , 
+					(uint32_t)_dmasettings[1].TCD->SADDR,  (uint32_t)_dmatx.TCD->DLASTSGA,
+					(_dmatx.TCD->SADDR > _dmasettings[1].TCD->SADDR)? '>' : '<');
 
 	}
+	#endif
+	if (_frame_callback_on_HalfDone && (_dmatx.TCD->SADDR > _dmasettings[1].TCD->SADDR)) {
+		_dma_sub_frame_count = 1;	// set as partial frame.
+	} else {
+		_dma_frame_count++;
+
+		// See if we are in continuous mode or not..
+		if ((_dma_state & ILI9341_DMA_CONT) == 0) {
+			// We are in single refresh mode or the user has called cancel so
+			// Lets try to release the CS pin
+			waitFifoNotFull();
+			writecommand_last(ILI9341_NOP);
+			endSPITransaction();
+			_dma_state &= ~ILI9341_DMA_ACTIVE;
+			_dmaActiveDisplay = 0;	// We don't have a display active any more... 
+		}
+		_dma_sub_frame_count = 0;	// set as partial frame.
+	}
+	if (_frame_complete_callback) (*_frame_complete_callback)();
+	// See if we should do call back or not...
 #elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
 	// T4
 	#if defined(TRY_FULL_DMA_CHAIN)
@@ -546,6 +562,8 @@ void	ILI9341_t3n::initDMASettings(void)
 	_dmasettings[1].destination(_pkinetisk_spi->PUSHR);
 	_dmasettings[1].TCD->ATTR_DST = 1;
 	_dmasettings[1].replaceSettingsOnCompletion(_dmasettings[2]);
+	if (_frame_callback_on_HalfDone) _dmasettings[1].interruptAtHalf();
+	else  _dmasettings[1].TCD->CSR &= ~DMA_TCD_CSR_INTHALF;
 
 	_dmasettings[2].sourceBuffer(&_pfbtft[COUNT_WORDS_WRITE*2], COUNT_WORDS_WRITE*2);
 	_dmasettings[2].destination(_pkinetisk_spi->PUSHR);
@@ -553,10 +571,13 @@ void	ILI9341_t3n::initDMASettings(void)
 	_dmasettings[2].replaceSettingsOnCompletion(_dmasettings[3]);
 
 	// Sort of hack - but wrap around to output the first word again. 
-	_dmasettings[3].sourceBuffer(_pfbtft, 2);
+	// This version wraps again but instead outputs whole first group, bypass 0... 
+	_dmasettings[2].interruptAtCompletion();  // 2 is end of frame
+
+	_dmasettings[3].sourceBuffer(_pfbtft,  COUNT_WORDS_WRITE*2);
 	_dmasettings[3].destination(_pkinetisk_spi->PUSHR);
 	_dmasettings[3].TCD->ATTR_DST = 1;
-	_dmasettings[3].replaceSettingsOnCompletion(_dmasettings[0]);
+	_dmasettings[3].replaceSettingsOnCompletion(_dmasettings[1]);
 
 	// Setup DMA main object
 	//Serial.println("Setup _dmatx");
@@ -662,11 +683,11 @@ void ILI9341_t3n::dumpDMASettings() {
 #if defined(__MK66FX1M0__) 
 	// T3.6
 	Serial.printf("DMA dump TCDs %d\n", _dmatx.channel);
-	dumpDMA_TCD(&_dmatx);
-	dumpDMA_TCD(&_dmasettings[0]);
-	dumpDMA_TCD(&_dmasettings[1]);
-	dumpDMA_TCD(&_dmasettings[2]);
-	dumpDMA_TCD(&_dmasettings[3]);
+	dumpDMA_TCD(&_dmatx,"TX: ");
+	dumpDMA_TCD(&_dmasettings[0], " 0: ");
+	dumpDMA_TCD(&_dmasettings[1], " 1: ");
+	dumpDMA_TCD(&_dmasettings[2], " 2: ");
+	dumpDMA_TCD(&_dmasettings[3], " 3: ");
 #elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
 	// Serial.printf("DMA dump TCDs %d\n", _dmatx.channel);
 	dumpDMA_TCD(&_dmatx,"TX: ");
@@ -727,14 +748,13 @@ bool ILI9341_t3n::updateScreenAsync(bool update_cont)					// call to say update 
 	//==========================================
 	if (update_cont) {
 		// Try to link in #3 into the chain
-		_dmasettings[2].replaceSettingsOnCompletion(_dmasettings[3]);
-		_dmasettings[2].TCD->CSR &= ~(DMA_TCD_CSR_INTMAJOR | DMA_TCD_CSR_DREQ);  // Don't interrupt on this one... 
-		_dmasettings[3].interruptAtCompletion();
-		_dmasettings[3].TCD->CSR &= ~(DMA_TCD_CSR_DREQ);  // Don't disable on this one  
+		//_dmasettings[2].replaceSettingsOnCompletion(_dmasettings[3]);
+		//_dmasettings[2].TCD->CSR &= ~(DMA_TCD_CSR_INTMAJOR | DMA_TCD_CSR_DREQ);  // Don't interrupt on this one... 
+		_dmasettings[2].TCD->CSR &= ~(DMA_TCD_CSR_DREQ);  // Don't disable on this one  
 		_dma_state |= ILI9341_DMA_CONT;
 	} else {
 		// In this case we will only run through once...
-		_dmasettings[2].replaceSettingsOnCompletion(_dmasettings[0]);
+		//_dmasettings[2].replaceSettingsOnCompletion(_dmasettings[0]);
 		_dmasettings[2].interruptAtCompletion();
 		_dmasettings[2].disableOnCompletion();
 		_dma_state &= ~ILI9341_DMA_CONT;
@@ -755,7 +775,7 @@ bool ILI9341_t3n::updateScreenAsync(bool update_cont)					// call to say update 
 	// now lets start up the DMA
 //	volatile uint16_t  biter = _dmatx.TCD->BITER;
 	//DMA_CDNE_CDNE(_dmatx.channel);
-//	_dmatx = _dmasettings[0];
+	_dmatx = _dmasettings[0];
 //	_dmatx.TCD->BITER = biter;
 	_dma_frame_count = 0;  // Set frame count back to zero. 
 	_dmaActiveDisplay = this;
@@ -928,7 +948,7 @@ void ILI9341_t3n::endUpdateAsync() {
 	if (_dma_state & ILI9341_DMA_CONT) {
 		_dma_state &= ~ILI9341_DMA_CONT; // Turn of the continueous mode
 #if defined(__MK66FX1M0__) 
-		_dmasettings[3].disableOnCompletion();
+		_dmasettings[2].disableOnCompletion();
 #endif
 		#if defined(TRY_FULL_DMA_CHAIN)
 		_dmasettings[2].disableOnCompletion();
