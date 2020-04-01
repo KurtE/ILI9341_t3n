@@ -69,7 +69,7 @@ DMAChannel 	ILI9341_t3n::_dmatx;
 #elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
 //DMASetting 	ILI9341_t3n::_dmasettings[4];
 //DMAChannel 	ILI9341_t3n::_dmatx;
-#else
+#elif defined(__MK64FX512__)
 // T3.5 - had issues scatter/gather so do just use channels/interrupts
 // and update and continue
 DMAChannel  ILI9341_t3n::_dmatx;
@@ -294,7 +294,8 @@ void ILI9341_t3n::process_dma_interrupt(void) {
 #endif
 	asm("dsb");
 
-#else
+#elif defined(__MK64FX512__)
+	// 
 	// T3.5...
 	_dmarx.clearInterrupt();
 	_dmatx.clearComplete();
@@ -316,6 +317,8 @@ void ILI9341_t3n::process_dma_interrupt(void) {
 		endSPITransaction();
 		_dma_state &= ~ILI9341_DMA_ACTIVE;
 		_dmaActiveDisplay = 0;	// We don't have a display active any more... 
+		_dma_sub_frame_count = 0;
+		if (_frame_complete_callback) (*_frame_complete_callback)();
 #ifdef DEBUG_ASYNC_LEDS
 		digitalWriteFast(DEBUG_PIN_3, LOW);
 #endif
@@ -323,15 +326,23 @@ void ILI9341_t3n::process_dma_interrupt(void) {
 	} else {
 		uint16_t w;
 		if (_dma_count_remaining) { // Still part of one frome. 
+			bool half_done = _dma_count_remaining == (CBALLOC/4);
 			_dma_count_remaining -= _dma_write_size_words;
 			w = *((uint16_t*)_dmatx.TCD->SADDR);
 			_dmatx.TCD->SADDR = (volatile uint8_t*)(_dmatx.TCD->SADDR) + 2;
+			if (_frame_complete_callback && _frame_callback_on_HalfDone && half_done)  {
+				_dma_sub_frame_count = 1;
+				(*_frame_complete_callback)();
+			}
+			
 		} else {  // start a new frame
 			_dma_frame_count++;
 			_dmatx.sourceBuffer(&_pfbtft[1], (_dma_write_size_words-1)*2);
 			_dmatx.TCD->SLAST = 0;	// Finish with it pointing to next location
 			w = _pfbtft[0];
 			_dma_count_remaining = CBALLOC/2 - _dma_write_size_words;	// how much more to transfer? 
+			_dma_sub_frame_count = 0;
+			if (_frame_complete_callback) (*_frame_complete_callback)();
 		}
 #ifdef DEBUG_ASYNC_UPDATE
 //		dumpDMA_TCD(&_dmatx);
@@ -640,7 +651,7 @@ void	ILI9341_t3n::initDMASettings(void)
 	if (_spi_num == 0) _dmatx.attachInterrupt(dmaInterrupt);
 	else if (_spi_num == 1) _dmatx.attachInterrupt(dmaInterrupt1);
 	else _dmatx.attachInterrupt(dmaInterrupt2);
-#else
+#elif defined(__MK64FX512__)
 	// T3.5
 	// Lets setup the write size.  For SPI we can use up to 32767 so same size as we use on T3.6...
 	// But SPI1 and SPI2 max of 511.  We will use 480 in that case as even divider...
@@ -661,7 +672,7 @@ void	ILI9341_t3n::initDMASettings(void)
 	_dmatx.destination(_pkinetisk_spi->PUSHR);
 	_dmatx.TCD->ATTR_DST = 1;
 	_dmatx.disableOnCompletion();
-	// Current SPIN, has both RX/TX same for SPI1/2 so just know f
+	// SPI on T3.5 only SPI object can do full size... 
 	if (_spi_num == 0) {
 		_dmatx.triggerAtHardwareEvent(dmaTXevent);
 		_dma_write_size_words = COUNT_WORDS_WRITE;
@@ -696,7 +707,7 @@ void ILI9341_t3n::dumpDMASettings() {
 	#if defined(TRY_FULL_DMA_CHAIN)
 	dumpDMA_TCD(&_dmasettings[2], " 2: ");
 	#endif
-#else
+#elif defined(__MK64FX512__)
 	Serial.printf("DMA dump TX:%d RX:%d\n", _dmatx.channel, _dmarx.channel);
 	dumpDMA_TCD(&_dmatx);
 	dumpDMA_TCD(&_dmarx);
@@ -876,7 +887,7 @@ bool ILI9341_t3n::updateScreenAsync(bool update_cont)					// call to say update 
 
 	_dma_state |= ILI9341_DMA_ACTIVE;
 	#endif
-#else
+#elif defined(__MK64FX512__)
 	//==========================================
 	// T3.5
 	//==========================================

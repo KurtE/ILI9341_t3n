@@ -68,10 +68,12 @@
 
 // Allow us to enable or disable capabilities, particully Frame Buffer and Clipping for speed and size
 #ifndef DISABLE_ILI9341_FRAMEBUFFER
-#if defined(__MK64FX512__) || defined(__MK66FX1M0__)
+#if defined(__MK66FX1M0__)	// T3.6
 #define ENABLE_ILI9341_FRAMEBUFFER
-//#define SCREEN_DMA_NUM_SETTINGS (((uint32_t)((2 * ILI9341_TFTHEIGHT * ILI9341_TFTWIDTH) / 65536UL))+1)
 #define SCREEN_DMA_NUM_SETTINGS 3 // see if making it a constant value makes difference...
+#elif defined(__MK64FX512__) // T3.5 
+#define ENABLE_ILI9341_FRAMEBUFFER
+#define SCREEN_DMA_NUM_SETTINGS 4 // see if making it a constant value makes difference...
 #elif defined(__IMXRT1052__) || defined(__IMXRT1062__)
 #define ENABLE_ILI9341_FRAMEBUFFER
 #define TRY_FULL_DMA_CHAIN
@@ -603,7 +605,7 @@ class ILI9341_t3n : public Print
 	uint32_t 				_spi_fcr_save;		// save away previous FCR register value
 	static void dmaInterrupt1(void);
 	static void dmaInterrupt2(void);
-	#else
+	#elif defined(__MK64FX512__)
 	// T3.5 - had issues scatter/gather so do just use channels/interrupts
 	// and update and continue
 	static DMAChannel  	_dmatx;
