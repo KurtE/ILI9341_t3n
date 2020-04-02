@@ -8,9 +8,7 @@
         "url": "http://ladyada.net"
     },
     {
-        "name": "Paul Stoffregen",
-        "email": "paul@pjrc.com",
-        "url": "http://www.pjrc.com",
+        "name": "Kurt Eckhardt",
         "maintainer": true
     }    
   ],

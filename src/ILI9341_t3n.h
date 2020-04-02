@@ -68,12 +68,15 @@
 
 // Allow us to enable or disable capabilities, particully Frame Buffer and Clipping for speed and size
 #ifndef DISABLE_ILI9341_FRAMEBUFFER
-#if defined(__MK64FX512__) || defined(__MK66FX1M0__)
+#if defined(__MK66FX1M0__)	// T3.6
 #define ENABLE_ILI9341_FRAMEBUFFER
-//#define SCREEN_DMA_NUM_SETTINGS (((uint32_t)((2 * ILI9341_TFTHEIGHT * ILI9341_TFTWIDTH) / 65536UL))+1)
 #define SCREEN_DMA_NUM_SETTINGS 3 // see if making it a constant value makes difference...
+#elif defined(__MK64FX512__) // T3.5 
+#define ENABLE_ILI9341_FRAMEBUFFER
+#define SCREEN_DMA_NUM_SETTINGS 4 // see if making it a constant value makes difference...
 #elif defined(__IMXRT1052__) || defined(__IMXRT1062__)
 #define ENABLE_ILI9341_FRAMEBUFFER
+#define SCREEN_DMA_NUM_SETTINGS 3 // see if making it a constant value makes difference...
 #endif
 #endif
 
@@ -430,10 +433,13 @@ class ILI9341_t3n : public Print
 	#ifdef ENABLE_ILI9341_FRAMEBUFFER
 	uint16_t *getFrameBuffer() {return _pfbtft;}
 	uint32_t frameCount() {return _dma_frame_count; }
+	uint16_t subFrameCount() {return _dma_sub_frame_count; }
 	boolean	asyncUpdateActive(void)  {return (_dma_state & ILI9341_DMA_ACTIVE);}
 	void	initDMASettings(void);
+	void	setFrameCompleteCB(void (*pcb)(), bool fCallAlsoHalfDone=false);
 	#else
 	uint32_t frameCount() {return 0; }
+	uint16_t subFrameCount() {return 0; }
 	uint16_t *getFrameBuffer() {return NULL;}
 	boolean	asyncUpdateActive(void)  {return false;}
 	#endif
@@ -560,6 +566,8 @@ class ILI9341_t3n : public Print
     uint16_t	*_we_allocated_buffer;			// We allocated the buffer; 
 	int16_t  	_changed_min_x, _changed_max_x, _changed_min_y, _changed_max_y;
 	bool 		_updateChangedAreasOnly = false;	// current default off, 
+	void		(*_frame_complete_callback)() = nullptr;
+	bool 		_frame_callback_on_HalfDone = false;
 
     // Add DMA support. 
 #if defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
@@ -570,6 +578,7 @@ class ILI9341_t3n : public Print
 #endif
 	volatile uint8_t  	_dma_state = 0;  		// DMA status
 	volatile uint32_t	_dma_frame_count = 0;	// Can return a frame count...
+	volatile uint16_t 	_dma_sub_frame_count = 0; // Can return a frame count...
 	#if defined(__MK66FX1M0__) 
 	// T3.6 use Scatter/gather with chain to do transfer
 	static DMASetting 	_dmasettings[4];
@@ -579,20 +588,15 @@ class ILI9341_t3n : public Print
 	  // as to move it out of the memory that is cached...
 
 	static const uint32_t _count_pixels = ILI9341_TFTWIDTH * ILI9341_TFTHEIGHT;
-
-	DMASetting   		_dmasettings[2];
+	DMASetting   		_dmasettings[3];
 	DMAChannel   		_dmatx;
 	volatile    uint32_t _dma_pixel_index = 0;
-	volatile uint16_t 	_dma_sub_frame_count = 0; // Can return a frame count...
 	uint16_t          	_dma_buffer_size;   // the actual size we are using <= DMA_BUFFER_SIZE;
 	uint16_t          	_dma_cnt_sub_frames_per_frame;  
-	static const uint16_t    DMA_BUFFER_SIZE = 960;
-	uint16_t          	_dma_buffer1[DMA_BUFFER_SIZE] __attribute__ ((aligned(4)));
-	uint16_t          	_dma_buffer2[DMA_BUFFER_SIZE] __attribute__ ((aligned(4)));
 	uint32_t 				_spi_fcr_save;		// save away previous FCR register value
 	static void dmaInterrupt1(void);
 	static void dmaInterrupt2(void);
-	#else
+	#elif defined(__MK64FX512__)
 	// T3.5 - had issues scatter/gather so do just use channels/interrupts
 	// and update and continue
 	static DMAChannel  	_dmatx;
@@ -884,7 +888,9 @@ class ILI9341_t3n : public Print
 	#endif
 
 	void updateChangedAreasOnly(bool updateChangedOnly) {
+#ifdef ENABLE_ILI9341_FRAMEBUFFER
 		_updateChangedAreasOnly = updateChangedOnly;
+#endif
 	}
 
 	void HLine(int16_t x, int16_t y, int16_t w, uint16_t color)
