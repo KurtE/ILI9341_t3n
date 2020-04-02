@@ -76,7 +76,6 @@
 #define SCREEN_DMA_NUM_SETTINGS 4 // see if making it a constant value makes difference...
 #elif defined(__IMXRT1052__) || defined(__IMXRT1062__)
 #define ENABLE_ILI9341_FRAMEBUFFER
-#define TRY_FULL_DMA_CHAIN
 #define SCREEN_DMA_NUM_SETTINGS 3 // see if making it a constant value makes difference...
 #endif
 #endif
@@ -589,15 +588,7 @@ class ILI9341_t3n : public Print
 	  // as to move it out of the memory that is cached...
 
 	static const uint32_t _count_pixels = ILI9341_TFTWIDTH * ILI9341_TFTHEIGHT;
-	#if defined(TRY_FULL_DMA_CHAIN)
 	DMASetting   		_dmasettings[3];
-	#else
-
-	DMASetting   		_dmasettings[2];
-	static const uint16_t    DMA_BUFFER_SIZE = 960;
-	uint16_t          	_dma_buffer1[DMA_BUFFER_SIZE] __attribute__ ((aligned(4)));
-	uint16_t          	_dma_buffer2[DMA_BUFFER_SIZE] __attribute__ ((aligned(4)));
-	#endif
 	DMAChannel   		_dmatx;
 	volatile    uint32_t _dma_pixel_index = 0;
 	uint16_t          	_dma_buffer_size;   // the actual size we are using <= DMA_BUFFER_SIZE;
@@ -897,7 +888,9 @@ class ILI9341_t3n : public Print
 	#endif
 
 	void updateChangedAreasOnly(bool updateChangedOnly) {
+#ifdef ENABLE_ILI9341_FRAMEBUFFER
 		_updateChangedAreasOnly = updateChangedOnly;
+#endif
 	}
 
 	void HLine(int16_t x, int16_t y, int16_t w, uint16_t color)
