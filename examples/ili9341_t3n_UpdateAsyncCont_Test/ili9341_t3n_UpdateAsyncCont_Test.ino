@@ -15,7 +15,25 @@ elapsedMicros _dt;
 
 
 //------------------------------------
-#if defined(ARDUINO_TEENSY35) || defined(ARDUINO_TEENSY36)
+#define USE_SPI1
+#ifdef USE_SPI1
+#ifdef ARDUINO_TEENSY41
+#define TFT_RST 8
+#define TFT_DC  38
+#define TFT_CS 37
+#define TFT_MOSI 26
+#define TFT_MISO 39
+#define TFT_SCK 27
+#else
+#define TFT_RST 8
+#define TFT_DC  31
+#define TFT_CS 30
+#define TFT_MOSI 0
+#define TFT_MISO 1
+#define TFT_SCK 32
+
+#endif
+#elif defined(ARDUINO_TEENSY35) || defined(ARDUINO_TEENSY36)
 // currently my flexi...
 #define TFT_DC 22
 #define TFT_CS 15
