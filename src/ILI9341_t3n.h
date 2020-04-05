@@ -989,8 +989,8 @@ class ILI9341_t3n : public Print
 
 };
 
-#ifndef swap
-#define swap(a, b) { typeof(a) t = a; a = b; b = t; }
+#ifndef ILI9341_swap
+#define ILI9341_swap(a, b) { typeof(a) t = a; a = b; b = t; }
 #endif
 
 // To avoid conflict when also using Adafruit_GFX or any Adafruit library
