@@ -1,4 +1,4 @@
-#include "ILI9341_t3n_font_ComicSansMS.h"
+#include "ili9341_t3n_font_ComicSansMS.h"
 
 static const unsigned char ComicSansMS_8_data[] = {
 0x00,0x00,0x0C,0x03,0x24,0x0F,0x62,0x06,0x65,0x56,
