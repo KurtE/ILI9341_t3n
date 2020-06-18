@@ -2104,6 +2104,7 @@ FLASHMEM void ILI9341_t3n::begin(uint32_t spi_clock, uint32_t spi_clock_read)
 	}
 #elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x 
 	// Serial.println("   T4 setup CS/DC"); Serial.flush();
+    pending_rx_count = 0; // Make sure it is zero if we we do a second begin...
 	_csport = portOutputRegister(_cs);
 	_cspinmask = digitalPinToBitMask(_cs);
 	pinMode(_cs, OUTPUT);	
