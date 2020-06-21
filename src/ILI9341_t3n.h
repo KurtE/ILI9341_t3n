@@ -421,7 +421,7 @@ class ILI9341_t3n : public Print
 	void resetScrollBackgroundColor(uint16_t color);
 
 	// added support to use optional Frame buffer
-	enum {ILI9341_DMA_INIT=0x01, ILI9341_DMA_CONT=0x02, ILI9341_DMA_FINISH=0x04,ILI9341_DMA_ACTIVE=0x80};
+	enum {ILI9341_DMA_INIT=0x01, ILI9341_DMA_EVER_INIT=0x08, ILI9341_DMA_CONT=0x02, ILI9341_DMA_FINISH=0x04, ILI9341_DMA_ACTIVE=0x80};
 	void	setFrameBuffer(uint16_t *frame_buffer);
 	uint8_t useFrameBuffer(boolean b);		// use the frame buffer?  First call will allocate
 	void	freeFrameBuffer(void);			// explicit call to release the buffer

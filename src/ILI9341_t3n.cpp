@@ -53,9 +53,10 @@
 //#define DEBUG_ASYNC_UPDATE  // Enable to print out dma info
 //#define DEBUG_ASYNC_LEDS	// Enable to use digitalWrites to Debug
 #ifdef DEBUG_ASYNC_LEDS
-#define DEBUG_PIN_1 0
-#define DEBUG_PIN_2 1
+#define DEBUG_PIN_1 2
+#define DEBUG_PIN_2 3
 #define DEBUG_PIN_3 4
+#define DEBUG_PIN_4 5
 #endif
 
 #ifdef ENABLE_ILI9341_FRAMEBUFFER
@@ -520,38 +521,60 @@ void	ILI9341_t3n::initDMASettings(void)
 	_dmatx.triggerAtHardwareEvent(dmaTXevent);
 	_dmatx = _dmasettings[0];
 	_dmatx.attachInterrupt(dmaInterrupt);
+
+
 #elif defined(__IMXRT1052__) || defined(__IMXRT1062__)  // Teensy 4.x
-	// See if moving the frame buffer to other memory that is not cached helps out
-	// to remove tearing and the like...I know with 256 it will be either 256 or 248...
-
 	// 320*240/3 = 25600
-	_dmasettings[0].sourceBuffer(_pfbtft, (COUNT_WORDS_WRITE)*2);
-	_dmasettings[0].destination(_pimxrt_spi->TDR);
-	_dmasettings[0].TCD->ATTR_DST = 1;
-	_dmasettings[0].replaceSettingsOnCompletion(_dmasettings[1]);
+#ifdef DEBUG_ASYNC_LEDS
+	digitalWriteFast(DEBUG_PIN_4, !digitalReadFast(DEBUG_PIN_4));
+#endif
+	if (_dma_state & ILI9341_DMA_EVER_INIT) {  // Have we init this stuff before?  
+		// Try to just set the buffers... 
+		_dmasettings[0].sourceBuffer(_pfbtft, (COUNT_WORDS_WRITE)*2);
+		_dmasettings[1].sourceBuffer(&_pfbtft[COUNT_WORDS_WRITE], COUNT_WORDS_WRITE*2);
+		_dmasettings[2].sourceBuffer(&_pfbtft[COUNT_WORDS_WRITE*2], COUNT_WORDS_WRITE*2);
+		// and maybe the interrupt settings...
+		if (_frame_callback_on_HalfDone) _dmasettings[1].interruptAtHalf();
+		else  _dmasettings[1].TCD->CSR &= ~DMA_TCD_CSR_INTHALF;
+	} else {
+		// First time we init...
+		_dmasettings[0].sourceBuffer(_pfbtft, (COUNT_WORDS_WRITE)*2);
+		_dmasettings[0].destination(_pimxrt_spi->TDR);
+		_dmasettings[0].TCD->ATTR_DST = 1;
+		_dmasettings[0].replaceSettingsOnCompletion(_dmasettings[1]);
 
-	_dmasettings[1].sourceBuffer(&_pfbtft[COUNT_WORDS_WRITE], COUNT_WORDS_WRITE*2);
-	_dmasettings[1].destination(_pimxrt_spi->TDR);
-	_dmasettings[1].TCD->ATTR_DST = 1;
-	_dmasettings[1].replaceSettingsOnCompletion(_dmasettings[2]);
-	if (_frame_callback_on_HalfDone) _dmasettings[1].interruptAtHalf();
-	else  _dmasettings[1].TCD->CSR &= ~DMA_TCD_CSR_INTHALF;
+		_dmasettings[1].sourceBuffer(&_pfbtft[COUNT_WORDS_WRITE], COUNT_WORDS_WRITE*2);
+		_dmasettings[1].destination(_pimxrt_spi->TDR);
+		_dmasettings[1].TCD->ATTR_DST = 1;
+		_dmasettings[1].replaceSettingsOnCompletion(_dmasettings[2]);
+		if (_frame_callback_on_HalfDone) _dmasettings[1].interruptAtHalf();
+		else  _dmasettings[1].TCD->CSR &= ~DMA_TCD_CSR_INTHALF;
 
-	_dmasettings[2].sourceBuffer(&_pfbtft[COUNT_WORDS_WRITE*2], COUNT_WORDS_WRITE*2);
-	_dmasettings[2].destination(_pimxrt_spi->TDR);
-	_dmasettings[2].TCD->ATTR_DST = 1;
-	_dmasettings[2].replaceSettingsOnCompletion(_dmasettings[0]);
-	_dmasettings[2].interruptAtCompletion();
+		_dmasettings[2].sourceBuffer(&_pfbtft[COUNT_WORDS_WRITE*2], COUNT_WORDS_WRITE*2);
+		_dmasettings[2].destination(_pimxrt_spi->TDR);
+		_dmasettings[2].TCD->ATTR_DST = 1;
+		_dmasettings[2].replaceSettingsOnCompletion(_dmasettings[0]);
+		_dmasettings[2].interruptAtCompletion();
 
-	// Setup DMA main object
-	//Serial.println("Setup _dmatx");
-	// Serial.println("DMA initDMASettings - before dmatx");
-	_dmatx.begin(true);
-	_dmatx.triggerAtHardwareEvent(dmaTXevent);
-	_dmatx = _dmasettings[0];
-	if (_spi_num == 0) _dmatx.attachInterrupt(dmaInterrupt);
-	else if (_spi_num == 1) _dmatx.attachInterrupt(dmaInterrupt1);
-	else _dmatx.attachInterrupt(dmaInterrupt2);
+		// Setup DMA main object
+		//Serial.println("Setup _dmatx");
+		// Serial.println("DMA initDMASettings - before dmatx");
+	#ifdef DEBUG_ASYNC_LEDS
+		digitalWriteFast(DEBUG_PIN_4, !digitalReadFast(DEBUG_PIN_4));
+	#endif
+		_dmatx = _dmasettings[0];
+		_dmatx.begin(true);
+		_dmatx.triggerAtHardwareEvent(dmaTXevent);
+	#ifdef DEBUG_ASYNC_LEDS
+		digitalWriteFast(DEBUG_PIN_4, !digitalReadFast(DEBUG_PIN_4));
+	#endif
+		if (_spi_num == 0) _dmatx.attachInterrupt(dmaInterrupt);
+		else if (_spi_num == 1) _dmatx.attachInterrupt(dmaInterrupt1);
+		else _dmatx.attachInterrupt(dmaInterrupt2);
+	}
+#ifdef DEBUG_ASYNC_LEDS
+	digitalWriteFast(DEBUG_PIN_4, !digitalReadFast(DEBUG_PIN_4));
+#endif
 #elif defined(__MK64FX512__)
 	// T3.5
 	// Lets setup the write size.  For SPI we can use up to 32767 so same size as we use on T3.6...
@@ -584,7 +607,7 @@ void	ILI9341_t3n::initDMASettings(void)
 	//Serial.printf("Init DMA Settings: TX:%d size:%d\n", dmaTXevent, _dma_write_size_words);
 
 #endif
-	_dma_state = ILI9341_DMA_INIT;  // Should be first thing set!
+	_dma_state = ILI9341_DMA_INIT | ILI9341_DMA_EVER_INIT;  // Should be first thing set!
 	// Serial.println("DMA initDMASettings - end");
 
 }
@@ -644,6 +667,9 @@ bool ILI9341_t3n::updateScreenAsync(bool update_cont)					// call to say update 
 	// Init DMA settings. 
 	initDMASettings();
 
+#ifdef DEBUG_ASYNC_LEDS
+	digitalWriteFast(DEBUG_PIN_4, !digitalReadFast(DEBUG_PIN_4));
+#endif
 	// Don't start one if already active.
 	if (_dma_state & ILI9341_DMA_ACTIVE) {
 	#ifdef DEBUG_ASYNC_LEDS
@@ -706,6 +732,10 @@ bool ILI9341_t3n::updateScreenAsync(bool update_cont)					// call to say update 
 	_dmasettings[2].TCD->CSR &= ~( DMA_TCD_CSR_DREQ);
 	beginSPITransaction(_SPI_CLOCK);
 	// Doing full window. 
+#ifdef DEBUG_ASYNC_LEDS
+	digitalWriteFast(DEBUG_PIN_4, !digitalReadFast(DEBUG_PIN_4));
+#endif
+
 	setAddr(0, 0, _width-1, _height-1);
 	writecommand_last(ILI9341_RAMWR);
 
@@ -719,6 +749,9 @@ bool ILI9341_t3n::updateScreenAsync(bool update_cont)					// call to say update 
   	_dmatx.triggerAtHardwareEvent( _spi_hardware->tx_dma_channel );
 
  	_dmatx = _dmasettings[0];
+#ifdef DEBUG_ASYNC_LEDS
+	digitalWriteFast(DEBUG_PIN_4, !digitalReadFast(DEBUG_PIN_4));
+#endif
 
   	_dmatx.begin(false);
   	_dmatx.enable();
@@ -734,6 +767,9 @@ bool ILI9341_t3n::updateScreenAsync(bool update_cont)					// call to say update 
 	}
 
 	_dma_state |= ILI9341_DMA_ACTIVE;
+#ifdef DEBUG_ASYNC_LEDS
+	digitalWriteFast(DEBUG_PIN_4, !digitalReadFast(DEBUG_PIN_4));
+#endif
 #ifdef DEBUG_ASYNC_UPDATE
 	dumpDMASettings();
 #endif
@@ -2191,6 +2227,7 @@ FLASHMEM void ILI9341_t3n::begin(uint32_t spi_clock, uint32_t spi_clock_read)
 	pinMode(DEBUG_PIN_1, OUTPUT);
 	pinMode(DEBUG_PIN_2, OUTPUT);
 	pinMode(DEBUG_PIN_3, OUTPUT);
+	pinMode(DEBUG_PIN_4, OUTPUT);
 #endif
 	//Serial.println("_t3n::begin - completed"); Serial.flush();
 }
