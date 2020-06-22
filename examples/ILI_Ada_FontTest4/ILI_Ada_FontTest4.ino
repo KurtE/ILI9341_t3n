@@ -57,10 +57,8 @@ void setup() {
   long unsigned debug_start = millis ();
   while (!Serial && ((millis () - debug_start) <= 5000)) ;
   Serial.println("Setup");
-  //  begin display: Choose from: ILI9341_480x272, ILI9341_800x480, ILI9341_800x480ALT, Adafruit_480x272, Adafruit_800x480
-  tft.begin(60000000u);
+  tft.begin();
 
-  tft.setRotation(4);
   tft.fillWindow(ILI9341_BLACK);
 
   tft.setTextColor(ILI9341_WHITE);
@@ -143,6 +141,7 @@ void loop()
     if (font_test_list[font_index].ili_font) tft.setFont(*font_test_list[font_index].ili_font);
     else tft.setFont(font_test_list[font_index].gfx_font);
     tft.println(font_test_list[font_index].font_name);
+    Serial.println(font_test_list[font_index].font_name);
     displayStuff1();
   }
   nextPage();
