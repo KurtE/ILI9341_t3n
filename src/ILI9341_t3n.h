@@ -859,6 +859,8 @@ class ILI9341_t3n : public Print
 		setDataMode();
 		outputToSPI16(c);
 		waitTransmitComplete();
+		_pkinetisl_spi->C2 = 0; // Set back to 8 bit mode...
+		_pkinetisl_spi->S;	// Read in the status;
 	}
 
 #endif
