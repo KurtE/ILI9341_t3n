@@ -1,7 +1,3 @@
-
-// To use Kurt's Flexiboard uncomment the line below:
-//#define KURTS_FLEXI
-
 /***************************************************
   This version of touchscreen painting is setup to work with PJRC touch
   screen(http://pjrc.com/store/display_ili9341_touch.html), which uses a 
@@ -20,31 +16,44 @@
   MIT license, all text above must be included in any redistribution
  ****************************************************/
 
+// Optional Settings. 
+// To use Kurt's Flexiboard uncomment the line below:
+//#define KURTS_FLEXI
 
+//****************************************************************************
+// Touch options, Defaults to SPI
+//****************************************************************************
+// uncomment to try Touch on SPI1 pins
+//#define TOUCH_SPI1
+// FlexSPI on SPI1 pins
+//#define TOUCH_FLEXSPI
+
+
+//****************************************************************************
+// Includes
+//****************************************************************************
 #include <XPT2046_Touchscreen.h>
-
 #include <ILI9341_t3n.h>
 
+#ifdef TOUCH_FLEXSPI
+#include <FlexIOSPI.h>
+#include <FlexIO_t4.h>
+#endif
+
+
+//****************************************************************************
 // This is calibration data for the raw touch data to the screen coordinates
+//****************************************************************************
 // Warning, These are
 #define TS_MINX 337
 #define TS_MINY 529
 #define TS_MAXX 3729
 #define TS_MAXY 3711
-#if defined(__IMXRT1052__) || defined(__IMXRT1062__)
-// On Teensy 4 beta with Paul's breakout out: 
-// Using pins (MOSI, MISO, SCK which are labeled on Audio board breakout location 
-// which are not in the Normal processor positions
-// Also DC=10(CS), CS=9(MEMCS) and RST 23(MCLK) TOUCH_CS=21(BCLK)
-#define TFT_RST 23
-#define TFT_DC 10
-#define TFT_CS 9
-#define TFT_SCK 13
-#define TFT_MISO 12
-#define TFT_MOSI 11
-#define TOUCH_CS 21
 
-#elif defined(KURTS_FLEXI)
+//****************************************************************************
+// Settings and objects
+//****************************************************************************
+#if defined(KURTS_FLEXI)
 #define TFT_DC 22
 #define TFT_CS 15
 #define TFT_RST -1
@@ -54,8 +63,8 @@
 #define DEBUG_PIN 13
 #define TOUCH_CS  8
 #else
-#define TFT_DC  9
-#define TFT_CS 10
+#define TFT_DC  1
+#define TFT_CS 0
 #define TFT_RST 7
 #define TFT_SCK 13
 #define TFT_MISO 12
@@ -63,6 +72,25 @@
 #define TOUCH_CS  8
 #endif
 
+// If using SPI1 you can optionally setup to use other MISO pin on T4.1
+
+#ifdef TOUCH_SPI1
+#define TOUCH_MOSI 26
+#define TOUCH_MISO 39
+#define TOUCH_SCK  27
+#undef TOUCH_CS
+#define TOUCH_CS  38
+#endif
+
+// Setup flexSPI on same pins as SPI1
+#ifdef TOUCH_FLEXSPI
+#define TOUCH_MOSI 26
+#define TOUCH_MISO 39
+#define TOUCH_SCK  27
+#undef TOUCH_CS
+#define TOUCH_CS  38
+FlexIOSPI  flexspi(TOUCH_MOSI, TOUCH_MISO, TOUCH_SCK);
+#endif
 
 XPT2046_Touchscreen ts(TOUCH_CS);
 ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, TFT_RST, TFT_MOSI, TFT_SCK, TFT_MISO);
@@ -72,6 +100,9 @@ ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, TFT_RST, TFT_MOSI, TFT_SCK, TFT_MI
 #define PENRADIUS 3
 int oldcolor, currentcolor;
 
+//****************************************************************************
+// Setup
+//****************************************************************************
 void setup(void) {
   while (!Serial && (millis() <= 1000));
 
@@ -80,7 +111,20 @@ void setup(void) {
 
   tft.begin();
 
+#if defined (TOUCH_SPI1)
+  Serial.println("Using SPI1 for Touch\n");
+  // Can setup to use SPI1
+  #ifdef TOUCH_MISO  
+  SPI1.setMISO(TOUCH_MISO);
+  #endif
+  if (!ts.begin(SPI1)) {
+#elif defined(TOUCH_FLEXSPI)
+  Serial.println("Using flexSPI for Touch\n");
+  if (!ts.begin(flexspi)) {
+#else
+  // Or by default use SPI
   if (!ts.begin()) {
+#endif
     Serial.println("Couldn't start touchscreen controller");
     while (1);
   }
