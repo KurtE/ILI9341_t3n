@@ -308,6 +308,8 @@ public:
 
   // uint8_t readdata(void);
   uint8_t readcommand8(uint8_t reg, uint8_t index = 0);
+  uint16_t readScanLine();
+  void setFrameRateControl(uint8_t mode);
 
   // Added functions to read pixel data...
   uint16_t readPixel(int16_t x, int16_t y);
@@ -315,6 +317,12 @@ public:
   void writeRect(int16_t x, int16_t y, int16_t w, int16_t h,
                  const uint16_t *pcolors);
 
+  void writeSubImageRect(int16_t x, int16_t y, int16_t w, int16_t h, 
+                        int16_t image_offset_x, int16_t image_offset_y, int16_t image_width, int16_t image_height, 
+                        const uint16_t *pcolors);
+  void writeSubImageRectBytesReversed(int16_t x, int16_t y, int16_t w, int16_t h, 
+                        int16_t image_offset_x, int16_t image_offset_y, int16_t image_width, int16_t image_height, 
+                        const uint16_t *pcolors);
   // writeRect8BPP - 	write 8 bit per pixel paletted bitmap
   //					bitmap data in array at pixels, one byte per
   //pixel
@@ -602,6 +610,7 @@ protected:
   void waitFifoNotFull(void);
   void waitFifoEmpty(void);
   void waitTransmitComplete(void);
+  uint16_t waitTransmitCompleteReturnLast();
   void waitTransmitComplete(uint32_t mcr);
 #elif defined(KINETISL)
 #endif
