@@ -1735,9 +1735,7 @@ void ILI9341_t3n::setFrameRateControl(uint8_t mode) {
   writecommand_cont(ILI9341_FRMCTR1);
   writedata8_cont((mode >> 4) & 0x3); // Output DIVA setting (0-3)
   writedata8_cont(0x10 + (mode & 0xf)); // Output RTNA
-
-
-
+  endSPITransaction();
 }
 
 
