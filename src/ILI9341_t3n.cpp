@@ -1731,10 +1731,10 @@ if (_miso == 0xff)  return 0; // dont have miso pin
 
 void ILI9341_t3n::setFrameRateControl(uint8_t mode) {
   // Do simple version
-  beginSPITransaction(_SPI_CLOCK);
+  beginSPITransaction(_SPI_CLOCK/4);
   writecommand_cont(ILI9341_FRMCTR1);
   writedata8_cont((mode >> 4) & 0x3); // Output DIVA setting (0-3)
-  writedata8_cont(0x10 + (mode & 0xf)); // Output RTNA
+  writedata8_last(0x10 + (mode & 0xf)); // Output RTNA
   endSPITransaction();
 }
 
@@ -2704,7 +2704,7 @@ FLASHMEM void ILI9341_t3n::begin(uint32_t spi_clock, uint32_t spi_clock_read) {
           x = readcommand8(ILI9341_RDSELFDIAG);
           Serial.print("\nSelf Diagnostic: 0x"); Serial.println(x, HEX);
   */
-  beginSPITransaction(_SPI_CLOCK);
+  beginSPITransaction(_SPI_CLOCK/4);
   const uint8_t *addr = init_commands;
   while (1) {
     uint8_t count = *addr++;
