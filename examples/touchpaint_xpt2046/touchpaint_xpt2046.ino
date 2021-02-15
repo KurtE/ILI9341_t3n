@@ -63,13 +63,14 @@
 #define DEBUG_PIN 13
 #define TOUCH_CS  8
 #else
-#define TFT_DC  1
-#define TFT_CS 0
-#define TFT_RST 7
+// *************** Change to your Pin numbers ***************
+#define TFT_DC  9
+#define TFT_CS 10
+#define TFT_RST 8
 #define TFT_SCK 13
 #define TFT_MISO 12
 #define TFT_MOSI 11
-#define TOUCH_CS  8
+#define TOUCH_CS  6
 #endif
 
 // If using SPI1 you can optionally setup to use other MISO pin on T4.1
