@@ -15,7 +15,6 @@
  ****************************************************/
 
 // https://github.com/zkarcher/demosauce
-#include <SPIN.h>
 #include <SPI.h>
 #include <ILI9341_t3n.h>
 #include "font_Arial.h"
@@ -52,14 +51,18 @@ const int_fast8_t DEBUG_TRANSITION_INDEX = -1;  // Supports -1: chooses a transi
 
 const int_fast16_t DEFAULT_ANIM_TIME = 20.0f * 1000.0f;  // ms
 
-// TFT pins
-const uint8_t TFT_DC = 9;
-const uint8_t TFT_CS = 10;
+// *************** Change to your Pin numbers ***************
+#define TFT_DC  9
+#define TFT_CS 10
+#define TFT_RST 8
+#define TFT_SCK 13
+#define TFT_MISO 12
+#define TFT_MOSI 11
+#define TOUCH_CS  6
 const uint8_t MIC_PIN = 14;
-const uint8_t BACKLIGHT_PIN = 23;
+const uint8_t BACKLIGHT_PIN = 29;
+ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, TFT_RST, TFT_MOSI, TFT_SCK, TFT_MISO);
 
-// Use hardware SPI (#13, #12, #11) and the above for CS/DC
-ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC);
 FrameParams frameParams;
 long previousMillis = 0;
 

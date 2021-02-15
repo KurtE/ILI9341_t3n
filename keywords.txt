@@ -87,6 +87,10 @@ setClipRect	KEYWORD2
 drawNumber	KEYWORD2
 drawString	KEYWORD2
 setTextDatum	KEYWORD2
+readScanLine	KEYWORD2
+setFrameRateControl	KEYWORD2
+writeSubImageRect	KEYWORD2
+writeSubImageRectBytesReversed	KEYWORD2
 TL_DATUM	LITERAL1
 TC_DATUM	LITERAL1
 TR_DATUM	LITERAL1

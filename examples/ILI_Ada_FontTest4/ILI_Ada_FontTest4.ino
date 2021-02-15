@@ -43,12 +43,17 @@ const ili_fonts_test_t font_test_list[] = {
 
 } ;
 
+// *************** Change to your Pin numbers ***************
+#define TFT_DC  9
+#define TFT_CS 10
+#define TFT_RST 8
+#define TFT_SCK 13
+#define TFT_MISO 12
+#define TFT_MOSI 11
+#define TOUCH_CS  6
 
+ILI9341_t3n tft = ILI9341_t3n(TFT_CS, TFT_DC, TFT_RST, TFT_MOSI, TFT_SCK, TFT_MISO);
 
-#define ILI9341_CS 10
-#define ILI9341_DC 9
-#define ILI9341_RST 8
-ILI9341_t3n tft = ILI9341_t3n(ILI9341_CS, ILI9341_DC, ILI9341_RST);
 uint8_t test_screen_rotation = 0;
 
 

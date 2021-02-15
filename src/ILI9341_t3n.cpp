@@ -1638,6 +1638,108 @@ uint8_t ILI9341_t3n::readcommand8(uint8_t c, uint8_t index) {
 #endif
 }
 
+
+uint16_t ILI9341_t3n::readScanLine() {
+if (_miso == 0xff)  return 0; // dont have miso pin
+
+#ifdef KINETISK
+  beginSPITransaction(_SPI_CLOCK_READ);
+  writecommand_cont(0x45); // read from RAM
+
+  // transmit a DUMMY byte before the color bytes
+  _pkinetisk_spi->PUSHR =
+      0 | (pcs_data << 16) | SPI_PUSHR_CTAS(0) | SPI_PUSHR_CONT;
+
+  // skip values returned by the queued up transfers and the current in-flight
+  // transfer
+  uint32_t sr = _pkinetisk_spi->SR;
+  uint8_t skipCount = ((sr >> 4) & 0xF) + ((sr >> 12) & 0xF) + 1;
+
+  uint8_t txCount = 2;
+  uint8_t rxCount = 2;
+  uint8_t rxVals[2];
+  while (txCount || rxCount) {
+    // transmit another byte if possible
+    if (txCount && (_pkinetisk_spi->SR & 0xF000) <= _fifo_full_test) {
+      txCount--;
+      if (txCount) {
+        _pkinetisk_spi->PUSHR = 0 | (pcs_data << 16) |
+                                SPI_PUSHR_CTAS(0) | SPI_PUSHR_CONT;
+      } else {
+        _pkinetisk_spi->PUSHR = 0 | (pcs_data << 16) |
+                                SPI_PUSHR_CTAS(0) | SPI_PUSHR_EOQ;
+      }
+    }
+
+    // receive another byte if possible, and either skip it or store the color
+    if (rxCount && (_pkinetisk_spi->SR & 0xF0)) {
+      uint8_t rx = _pkinetisk_spi->POPR;
+
+      if (skipCount) {
+        skipCount--;
+      } else {
+        rxCount--;
+        rxVals[rxCount] = rx;
+      }
+    }
+  }
+
+  // wait for End of Queue
+  while ((_pkinetisk_spi->SR & SPI_SR_EOQF) == 0)
+    ;
+  _pkinetisk_spi->SR = SPI_SR_EOQF; // make sure it is clear
+  endSPITransaction();
+
+  return rxVals[0] + (uint16_t)(rxVals[1] << 8); // TODO...
+
+#elif defined(__IMXRT1062__)
+
+  // clear out queues. 
+
+  beginSPITransaction(_SPI_CLOCK_READ);
+//  _pimxrt_spi->SR = LPSPI_SR_TCF | LPSPI_SR_FCF | LPSPI_SR_WCF;
+  _pimxrt_spi->SR = LPSPI_SR_TCF | LPSPI_SR_FCF | LPSPI_SR_WCF;
+//  writecommand_cont(0x45); // This will wait until it completes
+  maybeUpdateTCR(_tcr_dc_assert | LPSPI_TCR_FRAMESZ(7) | LPSPI_TCR_CONT);
+  // BUGBUG - maybe update does not hold CONT if we are handling DC as IO pin... 
+  // so see if hacking it helps...
+  _pimxrt_spi->TCR = _spi_tcr_current | LPSPI_TCR_CONT;
+
+  _pimxrt_spi->TDR = 0x45; // send command
+  pending_rx_count++; //
+  while (!(_pimxrt_spi->SR & LPSPI_SR_WCF)) ; // wait until word complete
+  delayMicroseconds(3);
+  _pimxrt_spi->TCR = _spi_tcr_current;
+  maybeUpdateTCR(_tcr_dc_not_assert | LPSPI_TCR_FRAMESZ(7));
+  _pimxrt_spi->TDR = 0;
+  pending_rx_count++; //
+  maybeUpdateTCR(_tcr_dc_not_assert | LPSPI_TCR_FRAMESZ(7) );
+  _pimxrt_spi->TDR = 0;
+  pending_rx_count++; //
+//  _pimxrt_spi->TDR = 0;
+//  pending_rx_count++; //
+
+  uint16_t line = waitTransmitCompleteReturnLast();
+  endSPITransaction();
+  return line;
+#else
+  // TLC
+  return 0;
+#endif
+
+}
+
+void ILI9341_t3n::setFrameRateControl(uint8_t mode) {
+  // Do simple version
+  beginSPITransaction(_SPI_CLOCK/4);
+  writecommand_cont(ILI9341_FRMCTR1);
+  writedata8_cont((mode >> 4) & 0x3); // Output DIVA setting (0-3)
+  writedata8_last(0x10 + (mode & 0xf)); // Output RTNA
+  endSPITransaction();
+}
+
+
+
 // Read Pixel at x,y and get back 16-bit packed color
 #define READ_PIXEL_PUSH_BYTE 0x3f
 uint16_t ILI9341_t3n::readPixel(int16_t x, int16_t y) {
@@ -2028,6 +2130,155 @@ void ILI9341_t3n::writeRect(int16_t x, int16_t y, int16_t w, int16_t h,
   endSPITransaction();
 }
 
+// Now lets see if we can writemultiple pixels
+//                                    screen rect
+void ILI9341_t3n::writeSubImageRect(int16_t x, int16_t y, int16_t w, int16_t h, 
+  int16_t image_offset_x, int16_t image_offset_y, int16_t image_width, int16_t image_height, const uint16_t *pcolors)
+{
+  if (x == CENTER) x = (_width - w) / 2;
+  if (y == CENTER) y = (_height - h) / 2;
+  x+=_originx;
+  y+=_originy;
+  // Rectangular clipping 
+
+  // See if the whole thing out of bounds...
+  if((x >= _displayclipx2) || (y >= _displayclipy2)) return;
+  if (((x+w) <= _displayclipx1) || ((y+h) <= _displayclipy1)) return;
+
+  // Now lets use or image offsets to get to the first pixels data
+  pcolors += image_offset_y * image_width + image_offset_x;
+
+  // In these cases you can not do simple clipping, as we need to synchronize the colors array with the
+  // We can clip the height as when we get to the last visible we don't have to go any farther. 
+  // also maybe starting y as we will advance the color array. 
+  if(y < _displayclipy1) {
+    int dy = (_displayclipy1 - y);
+    h -= dy; 
+    pcolors += (dy * image_width); // Advance color array by that number of rows in the image 
+    y = _displayclipy1;   
+  }
+
+  if((y + h - 1) >= _displayclipy2) h = _displayclipy2 - y;
+
+  // For X see how many items in color array to skip at start of row and likewise end of row 
+  if(x < _displayclipx1) {
+    uint16_t x_clip_left = _displayclipx1-x; 
+    w -= x_clip_left; 
+    x = _displayclipx1;   
+    pcolors += x_clip_left;  // pre index the colors array.
+  }
+  if((x + w - 1) >= _displayclipx2) {
+    uint16_t x_clip_right = w;
+    w = _displayclipx2  - x;
+    x_clip_right -= w; 
+  } 
+
+  #ifdef ENABLE_ILI9341_FRAMEBUFFER
+  if (_use_fbtft) {
+    uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
+    for (;h>0; h--) {
+      const uint16_t *pcolors_row = pcolors; 
+      uint16_t * pfbPixel = pfbPixel_row;
+      for (int i = 0 ;i < w; i++) {
+        *pfbPixel++ = *pcolors++;
+      }
+      pfbPixel_row += _width;
+      pcolors = pcolors_row + image_width;
+    }
+    return; 
+  }
+  #endif
+
+  beginSPITransaction(_SPI_CLOCK);
+  setAddr(x, y, x+w-1, y+h-1);
+  writecommand_cont(ILI9341_RAMWR);
+  for(y=h; y>0; y--) {
+    const uint16_t *pcolors_row = pcolors; 
+    for(x=w; x>1; x--) {
+      writedata16_cont(*pcolors++);
+    }
+    writedata16_last(*pcolors++);
+    pcolors = pcolors_row + image_width;
+  }
+  endSPITransaction();
+}
+
+void ILI9341_t3n::writeSubImageRectBytesReversed(int16_t x, int16_t y, int16_t w, int16_t h, 
+  int16_t image_offset_x, int16_t image_offset_y, int16_t image_width, int16_t image_height, const uint16_t *pcolors)
+{
+  if (x == CENTER) x = (_width - w) / 2;
+  if (y == CENTER) y = (_height - h) / 2;
+  x+=_originx;
+  y+=_originy;
+  // Rectangular clipping 
+
+  // See if the whole thing out of bounds...
+  if((x >= _displayclipx2) || (y >= _displayclipy2)) return;
+  if (((x+w) <= _displayclipx1) || ((y+h) <= _displayclipy1)) return;
+
+  // Now lets use or image offsets to get to the first pixels data
+  pcolors += image_offset_y * image_width + image_offset_x;
+
+  // In these cases you can not do simple clipping, as we need to synchronize the colors array with the
+  // We can clip the height as when we get to the last visible we don't have to go any farther. 
+  // also maybe starting y as we will advance the color array. 
+  if(y < _displayclipy1) {
+    int dy = (_displayclipy1 - y);
+    h -= dy; 
+    pcolors += (dy * image_width); // Advance color array by that number of rows in the image 
+    y = _displayclipy1;   
+  }
+
+  if((y + h - 1) >= _displayclipy2) h = _displayclipy2 - y;
+
+  // For X see how many items in color array to skip at start of row and likewise end of row 
+  if(x < _displayclipx1) {
+    uint16_t x_clip_left = _displayclipx1-x; 
+    w -= x_clip_left; 
+    x = _displayclipx1;   
+    pcolors += x_clip_left;  // pre index the colors array.
+  }
+  if((x + w - 1) >= _displayclipx2) {
+    uint16_t x_clip_right = w;
+    w = _displayclipx2  - x;
+    x_clip_right -= w; 
+  } 
+
+  #ifdef ENABLE_ILI9341_FRAMEBUFFER
+  if (_use_fbtft) {
+    uint16_t * pfbPixel_row = &_pfbtft[ y*_width + x];
+    for (;h>0; h--) {
+      const uint16_t *pcolors_row = pcolors; 
+      uint16_t * pfbPixel = pfbPixel_row;
+      for (int i = 0 ;i < w; i++) {
+        *pfbPixel++ = *pcolors++;
+      }
+      pfbPixel_row += _width;
+      pcolors = pcolors_row + image_width;
+    }
+    return; 
+  }
+  #endif
+
+  beginSPITransaction(_SPI_CLOCK);
+  setAddr(x, y, x+w-1, y+h-1);
+  writecommand_cont(ILI9341_RAMWR);
+  for(y=h; y>0; y--) {
+    const uint16_t *pcolors_row = pcolors; 
+    for(x=w; x>1; x--) {
+      uint16_t color = *pcolors++;
+      color = ((color & 0xff) << 8) + (color >> 8);
+      writedata16_cont(color);
+    }
+      uint16_t color = *pcolors;
+      color = ((color & 0xff) << 8) + (color >> 8);
+      writedata16_last(color);
+    pcolors = pcolors_row + image_width;
+  }
+  endSPITransaction();
+}
+
+
 // writeRect8BPP - 	write 8 bit per pixel paletted bitmap
 //					bitmap data in array at pixels, one byte per
 //pixel
@@ -2264,113 +2515,28 @@ void ILI9341_t3n::writeRectNBPP(int16_t x, int16_t y, int16_t w, int16_t h,
   endSPITransaction();
 }
 
-static const uint8_t init_commands[] = {4,
-                                        0xEF,
-                                        0x03,
-                                        0x80,
-                                        0x02,
-                                        4,
-                                        0xCF,
-                                        0x00,
-                                        0XC1,
-                                        0X30,
-                                        5,
-                                        0xED,
-                                        0x64,
-                                        0x03,
-                                        0X12,
-                                        0X81,
-                                        4,
-                                        0xE8,
-                                        0x85,
-                                        0x00,
-                                        0x78,
-                                        6,
-                                        0xCB,
-                                        0x39,
-                                        0x2C,
-                                        0x00,
-                                        0x34,
-                                        0x02,
-                                        2,
-                                        0xF7,
-                                        0x20,
-                                        3,
-                                        0xEA,
-                                        0x00,
-                                        0x00,
-                                        2,
-                                        ILI9341_PWCTR1,
-                                        0x23, // Power control
-                                        2,
-                                        ILI9341_PWCTR2,
-                                        0x10, // Power control
-                                        3,
-                                        ILI9341_VMCTR1,
-                                        0x3e,
-                                        0x28, // VCM control
-                                        2,
-                                        ILI9341_VMCTR2,
-                                        0x86, // VCM control2
-                                        2,
-                                        ILI9341_MADCTL,
-                                        0x48, // Memory Access Control
-                                        2,
-                                        ILI9341_PIXFMT,
-                                        0x55,
-                                        3,
-                                        ILI9341_FRMCTR1,
-                                        0x00,
-                                        0x18,
-                                        4,
-                                        ILI9341_DFUNCTR,
-                                        0x08,
-                                        0x82,
-                                        0x27, // Display Function Control
-                                        2,
-                                        0xF2,
-                                        0x00, // Gamma Function Disable
-                                        2,
-                                        ILI9341_GAMMASET,
-                                        0x01, // Gamma curve selected
-                                        16,
-                                        ILI9341_GMCTRP1,
-                                        0x0F,
-                                        0x31,
-                                        0x2B,
-                                        0x0C,
-                                        0x0E,
-                                        0x08,
-                                        0x4E,
-                                        0xF1,
-                                        0x37,
-                                        0x07,
-                                        0x10,
-                                        0x03,
-                                        0x0E,
-                                        0x09,
-                                        0x00, // Set Gamma
-                                        16,
-                                        ILI9341_GMCTRN1,
-                                        0x00,
-                                        0x0E,
-                                        0x14,
-                                        0x03,
-                                        0x11,
-                                        0x07,
-                                        0x31,
-                                        0xC1,
-                                        0x48,
-                                        0x08,
-                                        0x0F,
-                                        0x0C,
-                                        0x31,
-                                        0x36,
-                                        0x0F, // Set Gamma
-                                        3,
-                                        0xb1,
-                                        0x00,
-                                        0x10, // FrameRate Control 119Hz
+static const uint8_t PROGMEM init_commands[] = {4, 0xEF, 0x03, 0x80, 0x02,
+                                        4, 0xCF, 0x00, 0XC1, 0X30, 
+                                        5, 0xED, 0x64, 0x03, 0X12, 0X81, 
+                                        4, 0xE8, 0x85, 0x00, 0x78, 
+                                        6, 0xCB, 0x39, 0x2C, 0x00, 0x34, 0x02,
+                                        2, 0xF7, 0x20,
+                                        3, 0xEA, 0x00, 0x00,
+                                        2, ILI9341_PWCTR1, 0x23, // Power control
+                                        2, ILI9341_PWCTR2, 0x10, // Power control
+                                        3, ILI9341_VMCTR1, 0x3e, 0x28, // VCM control
+                                        2, ILI9341_VMCTR2, 0x86, // VCM control2
+                                        2, ILI9341_MADCTL, 0x48, // Memory Access Control
+                                        2, ILI9341_PIXFMT, 0x55,
+                                        3, ILI9341_FRMCTR1, 0x00, 0x18,
+                                        4, ILI9341_DFUNCTR, 0x08, 0x82, 0x27, // Display Function Control
+                                        2, 0xF2, 0x00, // Gamma Function Disable
+                                        2, ILI9341_GAMMASET, 0x01, // Gamma curve selected
+                                        16, ILI9341_GMCTRP1, 0x0F, 0x31, 0x2B, 0x0C, 0x0E, 0x08, 0x4E,
+                                            0xF1, 0x37, 0x07, 0x10, 0x03, 0x0E, 0x09, 0x00, // Set Gamma
+                                        16, ILI9341_GMCTRN1, 0x00, 0x0E, 0x14, 0x03, 0x11, 0x07, 0x31,
+                                            0xC1, 0x48, 0x08, 0x0F, 0x0C, 0x31, 0x36, 0x0F, // Set Gamma
+                                        3, 0xb1, 0x00, 0x10, // FrameRate Control 119Hz
                                         0};
 
 FLASHMEM void ILI9341_t3n::begin(uint32_t spi_clock, uint32_t spi_clock_read) {
@@ -2538,7 +2704,7 @@ FLASHMEM void ILI9341_t3n::begin(uint32_t spi_clock, uint32_t spi_clock_read) {
           x = readcommand8(ILI9341_RDSELFDIAG);
           Serial.print("\nSelf Diagnostic: 0x"); Serial.println(x, HEX);
   */
-  beginSPITransaction(_SPI_CLOCK);
+  beginSPITransaction(_SPI_CLOCK/4);
   const uint8_t *addr = init_commands;
   while (1) {
     uint8_t count = *addr++;
@@ -5027,6 +5193,21 @@ void ILI9341_t3n::waitTransmitComplete(void) {
     }
   }
   _pimxrt_spi->CR = LPSPI_CR_MEN | LPSPI_CR_RRF; // Clear RX FIFO
+  //    digitalWriteFast(2, LOW);
+}
+
+uint16_t ILI9341_t3n::waitTransmitCompleteReturnLast() {
+  uint32_t val=0;
+  //    digitalWriteFast(2, HIGH);
+
+  while (pending_rx_count) {
+    if ((_pimxrt_spi->RSR & LPSPI_RSR_RXEMPTY) == 0) {
+      val = _pimxrt_spi->RDR; // Read any pending RX bytes in
+      pending_rx_count--;     // decrement count of bytes still levt
+    }
+  }
+  _pimxrt_spi->CR = LPSPI_CR_MEN | LPSPI_CR_RRF; // Clear RX FIFO
+  return val;
   //    digitalWriteFast(2, LOW);
 }
 
