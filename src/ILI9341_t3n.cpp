@@ -4999,7 +4999,7 @@ int16_t ILI9341_t3n::drawString(const String &string, int poX, int poY) {
   return drawString1(buffer, len-2, poX, poY);
 }
 
-int16_t ILI9341_t3n::drawString1(char string[], int16_t len, int poX, int poY) {
+int16_t ILI9341_t3n::drawString1(const char string[], int16_t len, int poX, int poY) {
   int16_t sumX = 0;
   uint8_t padding = 1 /*, baseline = 0*/;
 
