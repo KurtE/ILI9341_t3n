@@ -467,7 +467,7 @@ public:
   int16_t drawFloat(float floatNumber, int decimal, int poX, int poY);
   // Handle char arrays
   int16_t drawString(const String &string, int poX, int poY);
-  int16_t drawString1(char string[], int16_t len, int poX, int poY);
+  int16_t drawString1(const char string[], int16_t len, int poX, int poY);
 
   void setTextDatum(uint8_t datum);
 
