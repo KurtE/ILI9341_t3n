@@ -458,7 +458,7 @@ public:
                      int16_t *y1, uint16_t *w, uint16_t *h);
   void getTextBounds(const String &str, int16_t x, int16_t y, int16_t *x1,
                      int16_t *y1, uint16_t *w, uint16_t *h);
-  int16_t strPixelLen(const char *str);
+  int16_t strPixelLen(const char *str, uint16_t cb=0xffff);  // optional number of characters...
 
   // added support for drawing strings/numbers/floats with centering
   // modified from tft_ili9341_ESP github library

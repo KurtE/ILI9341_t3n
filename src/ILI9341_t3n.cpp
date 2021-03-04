@@ -4081,7 +4081,8 @@ void ILI9341_t3n::drawFontChar(unsigned int c) {
 }
 
 // strPixelLen			- gets pixel length of given ASCII string
-int16_t ILI9341_t3n::strPixelLen(const char *str) {
+// note, it will exit if end of str or cb has been reached. 
+int16_t ILI9341_t3n::strPixelLen(const char *str, uint16_t cb) {
   //	//Serial.printf("strPixelLen %s\n", str);
   if (!str)
     return (0);
@@ -4090,12 +4091,14 @@ int16_t ILI9341_t3n::strPixelLen(const char *str) {
     // them...
     int16_t x, y;
     uint16_t w, h;
-    getTextBounds(str, cursor_x, cursor_y, &x, &y, &w, &h);
+    if (cb == 0xffff) getTextBounds(str, cursor_x, cursor_y, &x, &y, &w, &h);  // default no count passed in
+    else getTextBounds((const uint8_t *)str, cb, cursor_x, cursor_y, &x, &y, &w, &h);
     return w;
   }
 
   uint16_t len = 0, maxlen = 0;
-  while (*str) {
+  while (*str && cb) {
+    cb--; // handle case where user passes in string...
     if (*str == '\n') {
       if (len > maxlen) {
         maxlen = len;
@@ -5004,7 +5007,7 @@ int16_t ILI9341_t3n::drawString1(const char string[], int16_t len, int poX, int 
   uint8_t padding = 1 /*, baseline = 0*/;
 
   uint16_t cwidth =
-      strPixelLen(string); // Find the pixel width of the string in the font
+      strPixelLen(string, len); // Find the pixel width of the string in the font
   uint16_t cheight = textsize_y * 6;
 
   if (textdatum || padX) {
