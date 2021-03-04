@@ -64,7 +64,7 @@ This library borrows some concepts and functionality from other libraries as wel
     int16_t  drawNumber(long long_num,int poX, int poY);
     int16_t  drawFloat(float floatNumber,int decimal,int poX, int poY);   
     int16_t drawString(const String& string, int poX, int poY);
-    int16_t drawString1(char string[], int16_t len, int poX, int poY);
+    int16_t drawString(char string[], int16_t len, int poX, int poY);
     void setTextDatum(uint8_t datum);
 ```
 
