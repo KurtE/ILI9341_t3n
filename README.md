@@ -95,6 +95,13 @@ if the autoCenter is true, the next text output will be centered at the given x,
 
 In addition you can pass in the magic value: ILI9341_t3n::CENTER for x and/or y and the next text output will be centered horizontally and/or vertically centered in the screen. 
 
+Some of the example sketches, such as the ILI_Ada_FontTest3 and ILI_Ada_FontTest4 may require an additional library of fonts to work.
+You can find this font library up at: https://github.com/mjs513/ILI9341_fonts
+This font library is setup, to create an archive file of all of the fonts, such that it won't pull in every font file in this directory, 
+unlike some other libraries.  Likewise it is setup to hopefully work with several of our libraries by conditionally including header files
+to try to match which display library you are using. 
+
+
 
 Discussion regarding this optimized version:
 ==========================
