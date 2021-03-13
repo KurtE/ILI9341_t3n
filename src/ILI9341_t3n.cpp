@@ -3143,11 +3143,11 @@ size_t ILI9341_t3n::write(const uint8_t *buffer, size_t size) {
     // Note we may want to play with the x ane y returned if they offset some
     if (_center_x_text &&
         strngWidth > 0) { // Avoid operations for strngWidth = 0
-      cursor_x -= ((x + strngWidth) / 2);
+      cursor_x -= (x + strngWidth / 2);
     }
     if (_center_y_text &&
         strngHeight > 0) { // Avoid operations for strngWidth = 0
-      cursor_y -= ((y + strngHeight) / 2);
+      cursor_y -= (y + strngHeight / 2);
     }
     _center_x_text = false;
     _center_y_text = false;
@@ -4193,7 +4193,7 @@ void ILI9341_t3n::charBounds(char c, int16_t *x, int16_t *y, int16_t *minx,
       } else {
         return;
       }
-      // Serial.printf("  index =  %d\n", fetchbits_unsigned(font->index,
+      // Serial.printf("  char = %c index =  %d\n", c, fetchbits_unsigned(font->index,
       // bitoffset, font->bits_index));
       data = font->data +
              fetchbits_unsigned(font->index, bitoffset, font->bits_index);
@@ -4207,17 +4207,25 @@ void ILI9341_t3n::charBounds(char c, int16_t *x, int16_t *y, int16_t *minx,
       bitoffset += font->bits_height;
       // Serial.printf("  size =   %d,%d\n", width, height);
       // Serial.printf("  line space = %d\n", font->line_space);
+      // Serial.printf("  cap height = %d\n", font->cap_height);
 
       int32_t xoffset = fetchbits_signed(data, bitoffset, font->bits_xoffset);
       bitoffset += font->bits_xoffset;
       int32_t yoffset = fetchbits_signed(data, bitoffset, font->bits_yoffset);
       bitoffset += font->bits_yoffset;
-
+      // Serial.printf("  offsets  = x:%d y:%d\n",  xoffset,  yoffset);
+       
       uint32_t delta = fetchbits_unsigned(data, bitoffset, font->bits_delta);
       bitoffset += font->bits_delta;
+    
+      // Compute ys using drawFontChar stuff?
+      //int32_t drawfontchar_y = *y + font->cap_height - height - yoffset;
+      //Serial.printf("  DFCY: %u %u\n", drawfontchar_y, drawfontchar_y+height);
 
-      int16_t x1 = *x + xoffset, y1 = *y + yoffset, x2 = x1 + width,
-              y2 = y1 + height;
+      int16_t x1 = *x + xoffset;
+      int16_t y1 = *y + font->cap_height - height - yoffset;
+      int16_t x2 = x1 + width;
+      int16_t y2 = y1 + height;
 
       if (wrap && (x2 > _width)) {
         *x = 0; // Reset x to zero, advance y by one line
@@ -4302,8 +4310,11 @@ void ILI9341_t3n::getTextBounds(const uint8_t *buffer, uint16_t len, int16_t x,
 
   int16_t minx = _width, miny = _height, maxx = -1, maxy = -1;
 
-  while (len--)
-    charBounds(*buffer++, &x, &y, &minx, &miny, &maxx, &maxy);
+  while (len--) {
+    uint8_t c = *buffer++;
+    charBounds(c, &x, &y, &minx, &miny, &maxx, &maxy);
+    //Serial.printf("%c in(%d %d) out(%d %d) - min(%d %d) max(%d %d)\n", c, *x1, *y1, x, y, minx, miny, maxx, maxy);
+  }
 
   if (maxx >= minx) {
     *x1 = minx;
@@ -4313,6 +4324,7 @@ void ILI9341_t3n::getTextBounds(const uint8_t *buffer, uint16_t len, int16_t x,
     *y1 = miny;
     *h = maxy - miny + 1;
   }
+  //Serial.printf("GTB %d %d %d %d\n", *x1, *y1, *w, *h);
 }
 
 void ILI9341_t3n::getTextBounds(const char *str, int16_t x, int16_t y,
@@ -4326,8 +4338,10 @@ void ILI9341_t3n::getTextBounds(const char *str, int16_t x, int16_t y,
 
   int16_t minx = _width, miny = _height, maxx = -1, maxy = -1;
 
-  while ((c = *str++))
+  while ((c = *str++)) {
     charBounds(c, &x, &y, &minx, &miny, &maxx, &maxy);
+    //Serial.printf("%c in(%d %d) out(%d %d) - min(%d %d) max(%d %d)\n", c, *x1, *y1, x, y, minx, miny, maxx, maxy);
+  }
 
   if (maxx >= minx) {
     *x1 = minx;
@@ -4337,6 +4351,7 @@ void ILI9341_t3n::getTextBounds(const char *str, int16_t x, int16_t y,
     *y1 = miny;
     *h = maxy - miny + 1;
   }
+  //Serial.printf("GTB %d %d %u %u\n", *x1, *y1, *w, *h);
 }
 
 void ILI9341_t3n::getTextBounds(const String &str, int16_t x, int16_t y,
