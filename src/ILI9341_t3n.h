@@ -515,6 +515,12 @@ public:
   uint16_t *getFrameBuffer() { return NULL; }
   boolean asyncUpdateActive(void) { return false; }
 #endif
+  void updateChangedAreasOnly(bool updateChangedOnly) {
+#ifdef ENABLE_ILI9341_FRAMEBUFFER
+    _updateChangedAreasOnly = updateChangedOnly;
+#endif
+  }
+
 protected:
   SPIClass *_pspi = nullptr;
   SPIClass::SPI_Hardware_t *_spi_hardware;
@@ -992,11 +998,6 @@ protected:
   }
 #endif
 
-  void updateChangedAreasOnly(bool updateChangedOnly) {
-#ifdef ENABLE_ILI9341_FRAMEBUFFER
-    _updateChangedAreasOnly = updateChangedOnly;
-#endif
-  }
 
   void HLine(int16_t x, int16_t y, int16_t w, uint16_t color)
       __attribute__((always_inline)) {
