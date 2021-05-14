@@ -133,6 +133,7 @@
 #define ILI9341_RAMRD 0x2E
 
 #define ILI9341_PTLAR 0x30
+#define ILI9341_VSCRDEF 0x33
 #define ILI9341_MADCTL 0x36
 #define ILI9341_VSCRSADD 0x37
 #define ILI9341_PIXFMT 0x3A
@@ -272,6 +273,7 @@ public:
   void fillScreenHGradient(uint16_t color1, uint16_t color2);
 
   void setRotation(uint8_t r);
+  void setScrollMargins(uint16_t top, uint16_t bottom);
   void setScroll(uint16_t offset);
   void invertDisplay(boolean i);
   void setAddrWindow(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1);

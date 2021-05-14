@@ -78,6 +78,12 @@ In addition, scrolling text has been added using appropriate function from, http
     void resetScrollBackgroundColor(uint16_t color);
 ```
 
+Some other member functions have been added by request, that have not been fully tested, nor will they work with the
+frame buffer.
+```c++
+	void setScrollMargins(uint16_t top, uint16_t bottom);  // Note this is now also member of Adafruit library
+```
+
 Font Support
 ------------
 This library tries to support three different font types.  This includes the original font support that is in the ILI9341_t3 library, which is 

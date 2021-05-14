@@ -1412,6 +1412,20 @@ void ILI9341_t3n::setRotation(uint8_t m) {
   cursor_y = 0;
 }
 
+void ILI9341_t3n::setScrollMargins(uint16_t top, uint16_t bottom) {
+  // TFA+VSA+BFA must equal 320
+  if (top + bottom > _height) return;
+  uint16_t middle = _height - top + bottom;
+
+  beginSPITransaction(_SPI_CLOCK);
+  writecommand_cont(ILI9341_VSCRDEF);
+  writedata16_cont(top);
+  writedata16_cont(middle);
+  writedata16_last(bottom);
+  endSPITransaction();
+}
+
+
 void ILI9341_t3n::setScroll(uint16_t offset) {
   beginSPITransaction(_SPI_CLOCK);
   writecommand_cont(ILI9341_VSCRSADD);
