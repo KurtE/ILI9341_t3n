@@ -1,13 +1,16 @@
+//***************************************************
 // https://github.com/kurte/ILI9341_t3n
 // http://forum.pjrc.com/threads/26305-Highly-optimized-ILI9341-(320x240-TFT-color-display)-library
 //
-// Warning this is Kurt's hacked up version whcih allow different SPI busses,
-// which hopefully
-//         will no longer be reliant on the SPIN library.
+// Warning this is Kurt's updated version which allows it to work on different SPI busses.
 //
-// Also allows use on only one valid CS pin on that buss, which must be used for
-// DC
-
+// On Teensy 3.x allows you to use on only one valid hardware CS pin  which must 
+// be used for DC
+//
+// On Teensy 4.x including Micromod you are free to use any digital pin for
+// CS and DC, but you might get a modest speed increase if hardware CS is
+// used for the DC pin
+//
 /***************************************************
   This is our library for the Adafruit  ILI9341 Breakout and Shield
   ----> http://www.adafruit.com/products/1651

@@ -1,7 +1,20 @@
 Overview and Warning: 
 =====
+This Arduino library is for driving ILI9341 displays on Teensy 3.x or 4.x boards from 
+PJRC(https://www.pjrc.com/) and I have played with it on a few different
+ILI9341 displays including ones from PJRC such as: https://www.pjrc.com/store/display_ili9341_touch.html and ones from Adafruit such as: https://www.adafruit.com/product/1770
+
 This is a modified version of the official PJRC ILI9341_t3 library (https://github.com/PaulStoffregen/ILI9341_t3).
 And it is always a Work In Progress.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
 
 This library borrows some concepts and functionality like the usage of DMA from another variant library: https://github.com/FrankBoesing/ILI9341_t3DMA
 
@@ -9,26 +22,38 @@ This library was originally created to be able to test out SPI on the newer Teen
 also adapted to allow this on the Teensy LC as well. 
 
 
-SPIN
+Constructor and begin
 ----
+This library was developed to allow you to use any of the SPI busses on a Teensy 3.x or 4.x processor. 
+It detects this by looking at which pins were specified on the constructor. 
 
-This version no longer uses or requires my SPIN library. 
-Currently this library uses my SPIN library (https://github.com/KurtE/SPIN), which allows me to use different SPI busses.
+```
+  ILI9341_t3n(uint8_t _CS, uint8_t _DC, uint8_t _RST = 255, uint8_t _MOSI = 11,
+              uint8_t _SCLK = 13, uint8_t _MISO = 12);
+```
 
-As such it no longer accepts a SPIN object to be passed in to the constructor. 
-
-However there is code in place that when the begin method is called.  The paremeters passed in for MISO/MOSI/SCK are 
-checked to see if they are valid for the SPI object.  If so SPI is used.  If not and the board type has SPI1, it will check to 
+When the begin method is called.  The parameters passed in for MISO/MOSI/SCK are checked to see if they are valid 
+for the SPI object.  If so SPI is used.  If not and the board type has SPI1, it will check to 
 see if those pins are valid for SPI1 and if so use SPI1, if not if there is an SPI2, it will check...
+```
+  void begin(uint32_t spi_clock = ILI9341_SPICLOCK,
+             uint32_t spi_clock_read = ILI9341_SPICLOCK_READ);
+```
 
-
-In addition, this code allows the ILI9341 code to work with only one hardware CS pin available, 
-which in this case must be used for the DC pin.  This is very useful to support SPI1 on the new T3.5 and T3.6 boards which only
+In addition, On Teensy 3.x boards, this code allows the ILI9341 code to work with only 
+one hardware CS pin available, which in this case must be used for the DC pin.  
+This is very useful to support SPI1 on the T3.5 and T3.6 boards which only
 have one CS pin unless you use some form of adapter to use the SPI pins that are on the SDCARD.   
+
+On Teensy 4.x including the Sparkfun Micromod Teensy, you are free to use any digital pin for CS and DC, but you might
+get a modest speed increase if hardware CS pin is used for the DC signal. 
+
 
 Frame Buffer
 ------------
-The teensy 3.6 and now 3.5 and now the T4.0 have a lot more memory than previous Teensy processors, so on these boards, I borrowed some ideas from the ILI9341_t3DMA library and added code to be able to use a logical Frame Buffer.  To enable this I added a couple of API's 
+The teensy 3.6 and now 3.5 and now the T4.x have a lot more memory than previous Teensy processors, so on these boards, 
+I borrowed some ideas from the ILI9341_t3DMA library and added code to be able to use a logical Frame Buffer.  
+To enable this I added a couple of API's 
 ```c++
     uint8_t useFrameBuffer(boolean b) - if b non-zero it will allocate memory and start using
     void	freeFrameBuffer(void) - Will free up the memory that was used.

@@ -1,4 +1,4 @@
-// https://github.com/PaulStoffregen/ILI9341_t3n
+// https://github.com/KurtE/ILI9341_t3n
 // http://forum.pjrc.com/threads/26305-Highly-optimized-ILI9341-(320x240-TFT-color-display)-library
 
 /***************************************************
