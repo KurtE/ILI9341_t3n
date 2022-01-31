@@ -253,6 +253,17 @@ typedef struct {
 #define ILI9341_SPICLOCK_READ 2000000
 #endif
 
+#if defined(__IMXRT1062__)  // Teensy 4.x
+// Also define these in lower memory so as to make sure they are not cached...
+// try work around DMA memory cached.  So have a couple of buffers we copy frame buffer into
+// as to move it out of the memory that is cached...
+typedef struct {
+  DMASetting      _dmasettings[3];
+  DMAChannel      _dmatx;
+} ILI9341DMA_Data;
+#endif
+
+
 class ILI9341_t3n : public Print {
 public:
   ILI9341_t3n(uint8_t _CS, uint8_t _DC, uint8_t _RST = 255, uint8_t _MOSI = 11,
@@ -543,12 +554,14 @@ protected:
   KINETISL_SPI_t *_pkinetisl_spi;
 #endif
 
-  int16_t _width, _height; // Display w/h as modified by current rotation
-  int16_t cursor_x, cursor_y;
+  int16_t _width = ILI9341_TFTWIDTH; // Display w/h as modified by current rotation
+  int16_t _height = ILI9341_TFTHEIGHT; // Display w/h as modified by current rotation
+  int16_t cursor_x = 0, cursor_y = 0;
   bool _center_x_text = false;
   bool _center_y_text = false;
-  int16_t _clipx1, _clipy1, _clipx2, _clipy2;
-  int16_t _originx, _originy;
+  int16_t _clipx1 = 0, _clipy1 = 0;
+  int16_t _clipx2 = ILI9341_TFTWIDTH, _clipy2 = ILI9341_TFTHEIGHT;
+  int16_t _originx = 0, _originy = 0;
   int16_t _displayclipx1, _displayclipy1, _displayclipx2, _displayclipy2;
   bool _invisible = false;
   bool _standard = true; // no bounding rectangle or origin set.
@@ -656,8 +669,7 @@ protected:
 
 // Add DMA support.
 #if defined(__IMXRT1052__) || defined(__IMXRT1062__) // Teensy 4.x
-  uint16_t
-      *_pfbtft_async; // pointer to async buffer at start of async operation...
+  uint16_t  *_pfbtft_async = nullptr; // pointer to async buffer at start of async operation...
   static ILI9341_t3n *_dmaActiveDisplay[3]; // Use pointer to this as a way to
                                             // get back to object...
 #else
@@ -677,12 +689,13 @@ protected:
   // as to move it out of the memory that is cached...
 
   static const uint32_t _count_pixels = ILI9341_TFTWIDTH * ILI9341_TFTHEIGHT;
-  DMASetting _dmasettings[3];
-  DMAChannel _dmatx;
+  static ILI9341DMA_Data _dma_data[3];   // one structure for each SPI buss... 
+  //DMASetting _dmasettings[3];
+  //DMAChannel _dmatx;
   volatile uint32_t _dma_pixel_index = 0;
-  uint16_t _dma_buffer_size; // the actual size we are using <= DMA_BUFFER_SIZE;
-  uint16_t _dma_cnt_sub_frames_per_frame;
-  uint32_t _spi_fcr_save; // save away previous FCR register value
+  uint16_t _dma_buffer_size = 0; // the actual size we are using <= DMA_BUFFER_SIZE;
+  uint16_t _dma_cnt_sub_frames_per_frame = 0;
+  uint32_t _spi_fcr_save = 0; // save away previous FCR register value
   static void dmaInterrupt1(void);
   static void dmaInterrupt2(void);
 #elif defined(__MK64FX512__)

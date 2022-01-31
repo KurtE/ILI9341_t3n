@@ -74,8 +74,10 @@
 DMASetting ILI9341_t3n::_dmasettings[4];
 DMAChannel ILI9341_t3n::_dmatx;
 #elif defined(__IMXRT1052__) || defined(__IMXRT1062__) // Teensy 4.x
-// DMASetting 	ILI9341_t3n::_dmasettings[4];
-// DMAChannel 	ILI9341_t3n::_dmatx;
+// On T4 Setup the buffers to be used one per SPI buss... 
+// This way we make sure it is hopefully in uncached memory
+ILI9341DMA_Data ILI9341_t3n::_dma_data[3];   // one structure for each SPI buss... 
+
 #elif defined(__MK64FX512__)
 // T3.5 - had issues scatter/gather so do just use channels/interrupts
 // and update and continue
@@ -170,15 +172,15 @@ void ILI9341_t3n::process_dma_interrupt(void) {
   static uint8_t print_count;
   if (print_count < 10) {
     print_count++;
-    Serial.printf("TCD: %x D1:%x %x%c\n", (uint32_t)_dmatx.TCD->SADDR,
-                  (uint32_t)_dmasettings[1].TCD->SADDR,
-                  (uint32_t)_dmatx.TCD->DLASTSGA,
-                  (_dmatx.TCD->SADDR > _dmasettings[1].TCD->SADDR) ? '>' : '<');
+    Serial.printf("TCD: %x D1:%x %x%c\n", (uint32_t)_dma_data[_spi_num]._dmatx.TCD->SADDR,
+                  (uint32_t)_dma_data[_spi_num]._dmasettings[1].TCD->SADDR,
+                  (uint32_t)_dma_data[_spi_num]._dmatx.TCD->DLASTSGA,
+                  (_dma_data[_spi_num]._dmatx.TCD->SADDR > _dmasettings[1].TCD->SADDR) ? '>' : '<');
   }
 #endif
-  _dmatx.clearInterrupt();
+  _dma_data[_spi_num]._dmatx.clearInterrupt();
   if (_frame_callback_on_HalfDone &&
-      (_dmatx.TCD->SADDR > _dmasettings[1].TCD->SADDR)) {
+      (_dma_data[_spi_num]._dmatx.TCD->SADDR > _dma_data[_spi_num]._dmasettings[1].TCD->SADDR)) {
     _dma_sub_frame_count = 1; // set as partial frame.
     if (_frame_complete_callback)
       (*_frame_complete_callback)();
@@ -205,7 +207,7 @@ void ILI9341_t3n::process_dma_interrupt(void) {
       while (_pimxrt_spi->SR & LPSPI_SR_MBF)
         ; // wait until this one is complete
 
-      _dmatx.clearComplete();
+      _dma_data[_spi_num]._dmatx.clearComplete();
       // Serial.println("Restore FCR");
       _pimxrt_spi->FCR = LPSPI_FCR_TXWATER(
           15);              // _spi_fcr_save;	// restore the FSR status...
@@ -568,58 +570,58 @@ void ILI9341_t3n::initDMASettings(void) {
 #endif
   if (_dma_state & ILI9341_DMA_EVER_INIT) { // Have we init this stuff before?
     // Try to just set the buffers...
-    _dmasettings[0].sourceBuffer(_pfbtft, (COUNT_WORDS_WRITE)*2);
-    _dmasettings[1].sourceBuffer(&_pfbtft[COUNT_WORDS_WRITE],
+    _dma_data[_spi_num]._dmasettings[0].sourceBuffer(_pfbtft, (COUNT_WORDS_WRITE)*2);
+    _dma_data[_spi_num]._dmasettings[1].sourceBuffer(&_pfbtft[COUNT_WORDS_WRITE],
                                  COUNT_WORDS_WRITE * 2);
-    _dmasettings[2].sourceBuffer(&_pfbtft[COUNT_WORDS_WRITE * 2],
+    _dma_data[_spi_num]._dmasettings[2].sourceBuffer(&_pfbtft[COUNT_WORDS_WRITE * 2],
                                  COUNT_WORDS_WRITE * 2);
     // and maybe the interrupt settings...
     if (_frame_callback_on_HalfDone)
-      _dmasettings[1].interruptAtHalf();
+      _dma_data[_spi_num]._dmasettings[1].interruptAtHalf();
     else
-      _dmasettings[1].TCD->CSR &= ~DMA_TCD_CSR_INTHALF;
+      _dma_data[_spi_num]._dmasettings[1].TCD->CSR &= ~DMA_TCD_CSR_INTHALF;
   } else {
     // First time we init...
-    _dmasettings[0].sourceBuffer(_pfbtft, (COUNT_WORDS_WRITE)*2);
-    _dmasettings[0].destination(_pimxrt_spi->TDR);
-    _dmasettings[0].TCD->ATTR_DST = 1;
-    _dmasettings[0].replaceSettingsOnCompletion(_dmasettings[1]);
+    _dma_data[_spi_num]._dmasettings[0].sourceBuffer(_pfbtft, (COUNT_WORDS_WRITE)*2);
+    _dma_data[_spi_num]._dmasettings[0].destination(_pimxrt_spi->TDR);
+    _dma_data[_spi_num]._dmasettings[0].TCD->ATTR_DST = 1;
+    _dma_data[_spi_num]._dmasettings[0].replaceSettingsOnCompletion(_dma_data[_spi_num]._dmasettings[1]);
 
-    _dmasettings[1].sourceBuffer(&_pfbtft[COUNT_WORDS_WRITE],
+    _dma_data[_spi_num]._dmasettings[1].sourceBuffer(&_pfbtft[COUNT_WORDS_WRITE],
                                  COUNT_WORDS_WRITE * 2);
-    _dmasettings[1].destination(_pimxrt_spi->TDR);
-    _dmasettings[1].TCD->ATTR_DST = 1;
-    _dmasettings[1].replaceSettingsOnCompletion(_dmasettings[2]);
+    _dma_data[_spi_num]._dmasettings[1].destination(_pimxrt_spi->TDR);
+    _dma_data[_spi_num]._dmasettings[1].TCD->ATTR_DST = 1;
+    _dma_data[_spi_num]._dmasettings[1].replaceSettingsOnCompletion(_dma_data[_spi_num]._dmasettings[2]);
     if (_frame_callback_on_HalfDone)
-      _dmasettings[1].interruptAtHalf();
+      _dma_data[_spi_num]._dmasettings[1].interruptAtHalf();
     else
-      _dmasettings[1].TCD->CSR &= ~DMA_TCD_CSR_INTHALF;
+      _dma_data[_spi_num]._dmasettings[1].TCD->CSR &= ~DMA_TCD_CSR_INTHALF;
 
-    _dmasettings[2].sourceBuffer(&_pfbtft[COUNT_WORDS_WRITE * 2],
+    _dma_data[_spi_num]._dmasettings[2].sourceBuffer(&_pfbtft[COUNT_WORDS_WRITE * 2],
                                  COUNT_WORDS_WRITE * 2);
-    _dmasettings[2].destination(_pimxrt_spi->TDR);
-    _dmasettings[2].TCD->ATTR_DST = 1;
-    _dmasettings[2].replaceSettingsOnCompletion(_dmasettings[0]);
-    _dmasettings[2].interruptAtCompletion();
+    _dma_data[_spi_num]._dmasettings[2].destination(_pimxrt_spi->TDR);
+    _dma_data[_spi_num]._dmasettings[2].TCD->ATTR_DST = 1;
+    _dma_data[_spi_num]._dmasettings[2].replaceSettingsOnCompletion(_dma_data[_spi_num]._dmasettings[0]);
+    _dma_data[_spi_num]._dmasettings[2].interruptAtCompletion();
 
 // Setup DMA main object
-// Serial.println("Setup _dmatx");
+// Serial.println("Setup _dma_data[_spi_num]._dmatx");
 // Serial.println("DMA initDMASettings - before dmatx");
 #ifdef DEBUG_ASYNC_LEDS
     digitalWriteFast(DEBUG_PIN_4, !digitalReadFast(DEBUG_PIN_4));
 #endif
-    _dmatx = _dmasettings[0];
-    _dmatx.begin(true);
-    _dmatx.triggerAtHardwareEvent(dmaTXevent);
+    _dma_data[_spi_num]._dmatx = _dma_data[_spi_num]._dmasettings[0];
+    _dma_data[_spi_num]._dmatx.begin(true);
+    _dma_data[_spi_num]._dmatx.triggerAtHardwareEvent(dmaTXevent);
 #ifdef DEBUG_ASYNC_LEDS
     digitalWriteFast(DEBUG_PIN_4, !digitalReadFast(DEBUG_PIN_4));
 #endif
     if (_spi_num == 0)
-      _dmatx.attachInterrupt(dmaInterrupt);
+      _dma_data[_spi_num]._dmatx.attachInterrupt(dmaInterrupt);
     else if (_spi_num == 1)
-      _dmatx.attachInterrupt(dmaInterrupt1);
+      _dma_data[_spi_num]._dmatx.attachInterrupt(dmaInterrupt1);
     else
-      _dmatx.attachInterrupt(dmaInterrupt2);
+      _dma_data[_spi_num]._dmatx.attachInterrupt(dmaInterrupt2);
   }
 #ifdef DEBUG_ASYNC_LEDS
   digitalWriteFast(DEBUG_PIN_4, !digitalReadFast(DEBUG_PIN_4));
@@ -677,10 +679,10 @@ void ILI9341_t3n::dumpDMASettings() {
   dumpDMA_TCD(&_dmasettings[3], " 3: ");
 #elif defined(__IMXRT1052__) || defined(__IMXRT1062__) // Teensy 4.x
   // Serial.printf("DMA dump TCDs %d\n", _dmatx.channel);
-  dumpDMA_TCD(&_dmatx, "TX: ");
-  dumpDMA_TCD(&_dmasettings[0], " 0: ");
-  dumpDMA_TCD(&_dmasettings[1], " 1: ");
-  dumpDMA_TCD(&_dmasettings[2], " 2: ");
+  dumpDMA_TCD(&_dma_data[_spi_num]._dmatx, "TX: ");
+  dumpDMA_TCD(&_dma_data[_spi_num]._dmasettings[0], " 0: ");
+  dumpDMA_TCD(&_dma_data[_spi_num]._dmasettings[1], " 1: ");
+  dumpDMA_TCD(&_dma_data[_spi_num]._dmasettings[2], " 2: ");
 #elif defined(__MK64FX512__)
   Serial.printf("DMA dump TX:%d RX:%d\n", _dmatx.channel, _dmarx.channel);
   dumpDMA_TCD(&_dmatx);
@@ -788,7 +790,7 @@ bool ILI9341_t3n::updateScreenAsync(
   if ((uint32_t)_pfbtft >= 0x20200000u)
     arm_dcache_flush(_pfbtft, CBALLOC);
 
-  _dmasettings[2].TCD->CSR &= ~(DMA_TCD_CSR_DREQ);
+  _dma_data[_spi_num]._dmasettings[2].TCD->CSR &= ~(DMA_TCD_CSR_DREQ);
   beginSPITransaction(_SPI_CLOCK);
 // Doing full window.
 #ifdef DEBUG_ASYNC_LEDS
@@ -806,22 +808,22 @@ bool ILI9341_t3n::updateScreenAsync(
   _pimxrt_spi->DER = LPSPI_DER_TDDE;
   _pimxrt_spi->SR = 0x3f00; // clear out all of the other status...
 
-  _dmatx.triggerAtHardwareEvent(_spi_hardware->tx_dma_channel);
+  _dma_data[_spi_num]._dmatx.triggerAtHardwareEvent(_spi_hardware->tx_dma_channel);
 
-  _dmatx = _dmasettings[0];
+  _dma_data[_spi_num]._dmatx = _dma_data[_spi_num]._dmasettings[0];
 #ifdef DEBUG_ASYNC_LEDS
   digitalWriteFast(DEBUG_PIN_4, !digitalReadFast(DEBUG_PIN_4));
 #endif
 
-  _dmatx.begin(false);
-  _dmatx.enable();
+  _dma_data[_spi_num]._dmatx.begin(false);
+  _dma_data[_spi_num]._dmatx.enable();
 
   _dma_frame_count = 0; // Set frame count back to zero.
   _dmaActiveDisplay[_spi_num] = this;
   if (update_cont) {
     _dma_state |= ILI9341_DMA_CONT;
   } else {
-    _dmasettings[2].disableOnCompletion();
+    _dma_data[_spi_num]._dmasettings[2].disableOnCompletion();
     _dma_state &= ~ILI9341_DMA_CONT;
   }
 
@@ -908,8 +910,10 @@ void ILI9341_t3n::endUpdateAsync() {
 #ifdef ENABLE_ILI9341_FRAMEBUFFER
   if (_dma_state & ILI9341_DMA_CONT) {
     _dma_state &= ~ILI9341_DMA_CONT; // Turn of the continueous mode
-#if defined(__MK66FX1M0__) || defined(__IMXRT1062__)
+#if defined(__MK66FX1M0__)
     _dmasettings[2].disableOnCompletion();
+#elif defined(__IMXRT1062__)
+    _dma_data[_spi_num]._dmasettings[2].disableOnCompletion();
 #endif
   }
 #endif
