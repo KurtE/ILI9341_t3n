@@ -398,8 +398,8 @@ public:
   void setTextColor(uint16_t c, uint16_t bg);
   void setTextSize(uint8_t sx, uint8_t sy);
   void inline setTextSize(uint8_t s) { setTextSize(s, s); }
-  uint8_t getTextSizeX();
-  uint8_t getTextSizeY();
+  uint8_t getTextSizeX() { return textsize_x; }
+  uint8_t getTextSizeY() { return textsize_y; }
   uint8_t getTextSize();
   void setTextWrap(boolean w);
   boolean getTextWrap();
@@ -552,6 +552,11 @@ protected:
   int16_t _displayclipx1, _displayclipy1, _displayclipx2, _displayclipy2;
   bool _invisible = false;
   bool _standard = true; // no bounding rectangle or origin set.
+  
+  uint16_t _x0_last = 0xffff;
+  uint16_t _x1_last = 0xffff;
+  uint16_t _y0_last = 0xffff;
+  uint16_t _y1_last = 0xffff;
 
   inline void updateDisplayClip() {
     _displayclipx1 = max(0, min(_clipx1 + _originx, width()));
@@ -701,12 +706,20 @@ protected:
 
   void setAddr(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1)
       __attribute__((always_inline)) {
-    writecommand_cont(ILI9341_CASET); // Column addr set
-    writedata16_cont(x0);             // XSTART
-    writedata16_cont(x1);             // XEND
-    writecommand_cont(ILI9341_PASET); // Row addr set
-    writedata16_cont(y0);             // YSTART
-    writedata16_cont(y1);             // YEND
+    if ((x0 != _x0_last) || (x1 != _x1_last)) {
+      writecommand_cont(ILI9341_CASET); // Column addr set
+      writedata16_cont(x0);             // XSTART
+      writedata16_cont(x1);             // XEND
+      _x0_last = x0;
+      _x1_last = x1;
+    }
+    if ((y0 != _y0_last) || (y1 != _y1_last)) {
+      writecommand_cont(ILI9341_PASET); // Row addr set
+      writedata16_cont(y0);             // YSTART
+      writedata16_cont(y1);             // YEND
+      _y0_last = y0;
+      _y1_last = y1;
+    }
   }
 //. From Onewire utility files
 #if defined(__IMXRT1052__) || defined(__IMXRT1062__) // Teensy 4.x
