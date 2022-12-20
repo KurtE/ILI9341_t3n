@@ -1,0 +1,38 @@
+name: Compile Examples
+
+on:
+  - push
+  - pull_request
+
+jobs:
+  build:
+    name: ${{ matrix.board.fqbn }}
+    runs-on: ubuntu-latest
+    
+    strategy:
+    
+      fail-fast: false
+      
+      matrix:
+        board:
+          - fqbn: "teensy:avr:teensy40"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Compile Examples
+        uses: arduino/compile-sketches@main
+        with:
+          platforms: |
+            - name: "teensy:avr"
+              source-url: https://www.pjrc.com/teensy/td_156/package_teensy_index.json
+              version: "1.57.0"
+          fqbn: ${{ matrix.board.fqbn }}
+          libraries: |
+            - source-path: ./
+            - name: "Adafruit STMPE610"
+            - name: "Adafruit GFX Library"
+            - name: "JPEGDEC"
+            - name: "PNGdec"
+            - source-url: "https://github.com/PaulStoffregen/ILI9341_fonts/archive/refs/heads/master.zip"

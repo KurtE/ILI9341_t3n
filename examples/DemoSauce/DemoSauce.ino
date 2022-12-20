@@ -17,7 +17,7 @@
 // https://github.com/zkarcher/demosauce
 #include <SPI.h>
 #include <ILI9341_t3n.h>
-#include "font_Arial.h"
+#include "ili9341_t3n_font_Arial.h"
 
 #include "FrameParams.h"
 

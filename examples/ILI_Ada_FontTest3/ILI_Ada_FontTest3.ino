@@ -3,14 +3,10 @@
 #include <SPI.h>
 #include <ILI9341_t3n.h>
 
-#include "font_Arial.h"
-#include "font_ArialBold.h"
-#include "font_ComicSansMS.h"
-#include "font_OpenSans.h"
-#include "font_DroidSans.h"
-#include "font_Michroma.h"
-#include "font_Crystal.h"
-#include "font_ChanceryItalic.h"
+#include "ili9341_t3n_font_Arial.h"
+#include "ili9341_t3n_font_ArialBold.h"
+#include "ili9341_t3n_font_ComicSansMS.h"
+#include "ili9341_t3n_font_OpenSans.h"
 
 #define ILI9341_CS 10
 #define ILI9341_DC 9
@@ -46,34 +42,6 @@ void setup() {
 
   nextPage();
   
-  tft.setTextColor(ILI9341_WHITE);
-  tft.setFont(DroidSans_14);
-  tft.println("DroidSans_14");
-  displayStuff();
-
-  tft.setTextColor(ILI9341_YELLOW);
-  tft.setFont(Michroma_14);
-  tft.println("Michroma_14");
-  displayStuff();
-
-  tft.setTextColor(ILI9341_BLACK, ILI9341_YELLOW);
-  tft.setFont(Crystal_24_Italic);
-  tft.println("CRYSTAL_24");
-  displayStuff();
-
-  nextPage();
-
-  tft.setTextColor(ILI9341_GREEN);
-  tft.setFont(Chancery_24_Italic);
-  tft.println("Chancery_24_Italic");
-  displayStuff();
-
-  //anti-alias font OpenSans
-  tft.setTextColor(ILI9341_RED, ILI9341_YELLOW);
-  tft.setFont(OpenSans24);
-  tft.println("OpenSans 18");
-  displayStuff(); 
-  
   Serial.println("Basic Font Display Complete");
   Serial.println("Loop test for alt colors + font");
 }
@@ -101,38 +69,6 @@ void loop()
   tft.setTextColor(ILI9341_GREEN);
   tft.setFont(ComicSansMS_14);
   tft.println("ComicSansMS 14");
-  displayStuff1(); 
-
-  tft.setTextColor(ILI9341_WHITE);
-  tft.setFont(DroidSans_14);
-  tft.println("DroidSans_14");
-  displayStuff1();
-
-  nextPage();
-
-  tft.setTextColor(ILI9341_YELLOW);
-  tft.setFont(Michroma_14);
-  tft.println("Michroma_14");
-  displayStuff1();
-
-  nextPage();
-  
-  tft.setTextColor(ILI9341_BLACK, ILI9341_YELLOW);
-  tft.setFont(Crystal_24_Italic);
-  tft.println("CRYSTAL_24");
-  displayStuff1();
-
-  tft.setTextColor(ILI9341_GREEN);
-  tft.setFont(Chancery_24_Italic);
-  tft.println("Chancery_24_Italic");
-  displayStuff1();
-  
-  nextPage();
-
-  //anti-alias font OpenSans
-  tft.setTextColor(ILI9341_RED, ILI9341_YELLOW);
-  tft.setFont(OpenSans24);
-  tft.println("OpenSans 18");
   displayStuff1(); 
 
   nextPage();

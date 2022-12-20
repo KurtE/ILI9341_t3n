@@ -41,7 +41,7 @@ int plots = 10000;        // number of plots to execute per frame (x30 = plots p
 // 2D array to hold exposure values
 byte exposure[dim*dim];
 int maxexposure;           // maximum exposure value
-int time = 0;
+int itime = 0;
 int exposures = 0;
 
 boolean drawing;
@@ -92,8 +92,8 @@ uint32_t CCdiff;
 void loop() {
   plotPlots();
   static int Dexposures = 0;
-  time++;
-  if (time % 30 == 0) {
+  itime++;
+  if (itime % 30 == 0) {
     // show progress every 2 seconds or so...
     CCdiff = ARM_DWT_CYCCNT;
     findMaxExposure();
