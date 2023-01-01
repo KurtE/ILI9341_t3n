@@ -19,7 +19,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@master
 
       - name: Compile Examples
         uses: arduino/compile-sketches@main
@@ -35,4 +35,4 @@ jobs:
             - name: "Adafruit GFX Library"
             - name: "JPEGDEC"
             - name: "PNGdec"
-            - source-url: "https://github.com/PaulStoffregen/ILI9341_fonts/archive/refs/heads/master.zip"
+            - source-url: "https://github.com/mjs513/ILI9341_fonts/archive/refs/heads/master.zip"

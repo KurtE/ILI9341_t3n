@@ -3,10 +3,14 @@
 #include <SPI.h>
 #include <ILI9341_t3n.h>
 
-#include "ili9341_t3n_font_Arial.h"
-#include "ili9341_t3n_font_ArialBold.h"
-#include "ili9341_t3n_font_ComicSansMS.h"
-#include "ili9341_t3n_font_OpenSans.h"
+#include "font_Arial.h"
+#include "font_ArialBold.h"
+#include "font_ComicSansMS.h"
+#include "font_OpenSans.h"
+#include "font_DroidSans.h"
+#include "font_Michroma.h"
+#include "font_Crystal.h"
+#include "font_ChanceryItalic.h"
 
 #define CENTER ILI9341_t3n::CENTER
 
@@ -27,6 +31,10 @@ const ili_fonts_test_t font_test_list[] = {
   {&Arial_12, nullptr,  "Arial_12", ILI9341_WHITE, ILI9341_WHITE},
   {&Arial_12_Bold, nullptr,  "ArialBold 12", ILI9341_YELLOW, ILI9341_YELLOW},
   {&ComicSansMS_12, nullptr,  "ComicSansMS 12", ILI9341_GREEN, ILI9341_GREEN},
+  {&DroidSans_12, nullptr,  "DroidSans_12", ILI9341_WHITE, ILI9341_WHITE},
+  {&Michroma_12, nullptr,  "Michroma_12", ILI9341_YELLOW, ILI9341_YELLOW},
+  {&Crystal_16_Italic, nullptr,  "CRYSTAL_16", ILI9341_BLACK, ILI9341_YELLOW},
+  {&Chancery_16_Italic, nullptr,  "Chancery_16_Italic", ILI9341_GREEN, ILI9341_GREEN},
   {&OpenSans16, nullptr,  "OpenSans 16", ILI9341_RED, ILI9341_YELLOW},
   {nullptr, &FreeMono9pt7b,  "GFX FreeMono9pt7b", ILI9341_WHITE, ILI9341_WHITE},
   {nullptr, &FreeMono9pt7b,  "GFX FreeMono9pt7b", ILI9341_RED, ILI9341_YELLOW},
@@ -73,7 +81,29 @@ void setup() {
   tft.println("ComicSansMS 12");
   displayStuff();
 
+
+  tft.setTextColor(ILI9341_WHITE);
+  tft.setFont(DroidSans_12);
+  tft.println("DroidSans_12");
+  displayStuff();
   nextPage();
+
+  tft.setTextColor(ILI9341_YELLOW);
+  tft.setFont(Michroma_12);
+  tft.println("Michroma_12");
+  displayStuff();
+
+  tft.setTextColor(ILI9341_BLACK, ILI9341_YELLOW);
+  tft.setFont(Crystal_16_Italic);
+  tft.println("CRYSTAL_16");
+  displayStuff();
+
+  nextPage();
+
+  tft.setTextColor(ILI9341_GREEN);
+  tft.setFont(Chancery_16_Italic);
+  tft.println("Chancery_16_Italic");
+  displayStuff();
 
   //anti-alias font OpenSans
   tft.setTextColor(ILI9341_RED, ILI9341_YELLOW);
