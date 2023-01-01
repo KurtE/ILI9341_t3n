@@ -1,0 +1,16 @@
+name: Lint check
+
+on:
+  - push
+  - pull_request
+
+jobs:
+  lint-check:
+    runs-on: ubuntu-latest
+
+    steps:
+        - uses: actions/checkout@v3
+        - uses: arduino/arduino-lint-action@v1
+          with:
+            library-manager: submit
+            compliance: strict
