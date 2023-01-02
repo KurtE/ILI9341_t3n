@@ -88,8 +88,10 @@
   4 // see if making it a constant value makes difference...
 #elif defined(__IMXRT1052__) || defined(__IMXRT1062__)
 #define ENABLE_ILI9341_FRAMEBUFFER
+#ifndef SCREEN_DMA_NUM_SETTINGS
 #define SCREEN_DMA_NUM_SETTINGS                                                \
   3 // see if making it a constant value makes difference...
+#endif
 #endif
 #endif
 
@@ -188,8 +190,10 @@
 #define ILI9341_GREENYELLOW 0xAFE5 /* 173, 255,  47 */
 #define ILI9341_PINK 0xF81F
 
-#define CL(_r, _g, _b) ((((_r)&0xF8) << 8) | (((_g)&0xFC) << 3) | ((_b) >> 3))
 
+#ifndef CL
+#define CL(_r,_g,_b) ((((_r)&0xF8)<<8)|(((_g)&0xFC)<<3)|((_b)>>3))
+#endif
 #define sint16_t int16_t
 
 // Lets see about supporting Adafruit fonts as well?
@@ -391,7 +395,9 @@ public:
                        uint16_t bg, uint8_t size) {
     drawChar(x, y, c, color, bg, size);
   }
+  #ifndef CENTER
   static const int16_t CENTER = 9998;
+  #endif
   void setCursor(int16_t x, int16_t y, bool autoCenter = false);
   void getCursor(int16_t *x, int16_t *y);
   void setTextColor(uint16_t c);
@@ -793,8 +799,9 @@ protected:
     waitTransmitComplete(mcr);
   }
 #elif defined(__IMXRT1052__) || defined(__IMXRT1062__) // Teensy 4.x
-#define TCR_MASK                                                               \
-  (LPSPI_TCR_PCS(3) | LPSPI_TCR_FRAMESZ(31) | LPSPI_TCR_CONT | LPSPI_TCR_RXMSK)
+#ifndef TCR_MASK
+#define TCR_MASK  (LPSPI_TCR_PCS(3) | LPSPI_TCR_FRAMESZ(31) | LPSPI_TCR_CONT | LPSPI_TCR_RXMSK )
+#endif
   void maybeUpdateTCR(
       uint32_t requested_tcr_state) /*__attribute__((always_inline)) */ {
     if ((_spi_tcr_current & TCR_MASK) != requested_tcr_state) {
@@ -1153,6 +1160,9 @@ protected:
 // Warning the implemention of class needs to be here, else the code
 // compiled in the c++ file will cause duplicate defines in the link phase.
 //#ifndef _ADAFRUIT_GFX_H
+#ifdef Adafruit_GFX_Button
+#undef Adafruit_GFX_Button
+#endif
 #define Adafruit_GFX_Button ILI9341_Button
 class ILI9341_Button {
 public:
