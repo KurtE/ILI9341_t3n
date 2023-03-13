@@ -470,6 +470,9 @@ public:
   void getTextBounds(const String &str, int16_t x, int16_t y, int16_t *x1,
                      int16_t *y1, uint16_t *w, uint16_t *h);
   int16_t strPixelLen(const char *str, uint16_t cb=0xffff);  // optional number of characters...
+  // Added for compatibility with ILI9341_t3
+  uint16_t measureTextWidth(const uint8_t* text, int chars = 0);
+  uint16_t measureTextHeight(const uint8_t* text, int chars = 0);
 
   // added support for drawing strings/numbers/floats with centering
   // modified from tft_ili9341_ESP github library
