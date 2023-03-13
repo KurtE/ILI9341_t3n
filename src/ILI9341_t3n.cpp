@@ -4376,6 +4376,23 @@ void ILI9341_t3n::getTextBounds(const String &str, int16_t x, int16_t y,
   }
 }
 
+uint16_t ILI9341_t3n::measureTextWidth(const uint8_t* text, int n) {
+  int16_t x1, y1;
+  uint16_t w, h;
+  if (n == 0)  n = strlen((const char *)text);
+  getTextBounds(text, n, 0, 0, &x1, &y1, &w, &h);
+  return w;
+}
+
+uint16_t ILI9341_t3n::measureTextHeight(const uint8_t* text, int n) {
+  int16_t x1, y1;
+  uint16_t w, h;
+  if (n == 0)  n = strlen((const char *)text);
+  getTextBounds(text, n, 0, 0, &x1, &y1, &w, &h);
+  return h;
+}
+
+
 void ILI9341_t3n::drawFontPixel(uint8_t alpha, uint32_t x, uint32_t y) {
   // Adjust alpha based on the number of alpha levels supported by the font
   // (based on bpp)
