@@ -2145,7 +2145,7 @@ void ILI9341_t3n::writeRect(int16_t x, int16_t y, int16_t w, int16_t h,
       pcolors += x_clip_right;
       y++;
     }
-    // See if we found any chang
+    // See if we found any change
     // if any of the min/max values have default value we know that nothing changed.
     if (y_changed_max != -1) {
       updateChangedRange(x + i_changed_min , y_changed_min, 

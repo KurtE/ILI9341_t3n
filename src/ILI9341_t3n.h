@@ -1128,6 +1128,7 @@ protected:
         ((((fg - bg) * alpha) >> 5) + bg) & 0b00000111111000001111100000011111;
     return (uint16_t)((result >> 16) | result); // contract result
   }
+
   void Pixel(int16_t x, int16_t y, uint16_t color)
       __attribute__((always_inline)) {
     x += _originx;
