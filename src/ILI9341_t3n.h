@@ -323,9 +323,15 @@ public:
   // Added functions to read pixel data...
   uint16_t readPixel(int16_t x, int16_t y);
   void readRect(int16_t x, int16_t y, int16_t w, int16_t h, uint16_t *pcolors);
+  
+  // This method writes a rectangle of pixel data either to the screen or to frame buffer
+  // this is like the fillRect, except instead of contant color, the array contains the
+  // the color for each pixel.
   void writeRect(int16_t x, int16_t y, int16_t w, int16_t h,
                  const uint16_t *pcolors);
 
+  // The write sub-rect is like the writeRect, except we only want to output a portion of it, so it needs to
+  // skip through portions of the pcolor array to keep things aligned.
   void writeSubImageRect(int16_t x, int16_t y, int16_t w, int16_t h, 
                         int16_t image_offset_x, int16_t image_offset_y, int16_t image_width, int16_t image_height, 
                         const uint16_t *pcolors);
@@ -995,7 +1001,7 @@ protected:
   void clearChangedRange() {
     _changed_min_x = 0x7fff;
     _changed_max_x = -1;
-    _changed_min_x = 0x7fff;
+    _changed_min_y = 0x7fff;
     _changed_max_y = -1;
   }
 
@@ -1011,6 +1017,7 @@ protected:
       _changed_max_x = x;
     if (y > _changed_max_y)
       _changed_max_y = y;
+    //if (Serial)Serial.printf("UCR(%d %d %d %d) min:%d %d max:%d %d\n", w, y, w, h, _changed_min_x, _changed_min_y, _changed_max_x, _changed_max_y);
   }
 
   // could combine with above, but avoids the +-...
