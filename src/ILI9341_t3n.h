@@ -516,6 +516,20 @@ public:
   useFrameBuffer(boolean b);  // use the frame buffer?  First call will allocate
   void freeFrameBuffer(void); // explicit call to release the buffer
   void updateScreen(void);    // call to say update the screen now.
+  void *_dma_pixel_buffer_alloc = nullptr;
+  uint16_t *_dma_pixel_buffer0 = nullptr;
+  uint16_t *_dma_pixel_buffer1 = nullptr;
+  uint16_t _pixel_buffer_size = 2048; // define default size for now...
+
+  int16_t _pb_start_x, _pb_start_y, _pb_end_x, _pb_end_y, _pb_x, _pb_y;
+  int8_t _pb_complete;
+
+  // allow the user to set the buffers and size, or lett default
+  void setClippedAsyncPixelBuffers(uint16_t *pb0, uint16_t *pb1, uint buffer_size) {
+    _dma_pixel_buffer0 = pb0;
+    _dma_pixel_buffer1 = pb1;
+  }
+  uint16_t fill_next_pixel_buffer(uint16_t *pb, int8_t buffer_index);
   bool updateScreenAsync(bool update_cont = false); // call to say update the
                                                     // screen optinoally turn
                                                     // into continuous mode.
@@ -527,7 +541,9 @@ public:
   uint32_t frameCount() { return _dma_frame_count; }
   uint16_t subFrameCount() { return _dma_sub_frame_count; }
   boolean asyncUpdateActive(void) { return (_dma_state & ILI9341_DMA_ACTIVE); }
+  static const int16_t MIN_TO_ASYNC = 32; // bail if small
   void initDMASettings(void);
+  bool computeClippedUpdateRegion(int16_t &start_x, int16_t &start_y, int16_t &end_x, int16_t &end_y);
   void setFrameCompleteCB(void (*pcb)(), bool fCallAlsoHalfDone = false);
 #else
   uint32_t frameCount() { return 0; }
