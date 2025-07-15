@@ -2659,7 +2659,12 @@ FLASHMEM void ILI9341_t3n::begin(uint32_t spi_clock, uint32_t spi_clock_read) {
   uint32_t *pa = (uint32_t *)((void *)_pspi);
   _spi_hardware = (SPIClass::SPI_Hardware_t *)(void *)pa[1];
 
-  _pspi->begin();
+  if (!_shared_spi_status[_spi_num]._begin_done)
+  {
+    _pspi->begin();
+    _shared_spi_status[_spi_num]._begin_done = true;
+    _shared_spi_status[_spi_num]._pending_rx_count = 0;
+  }
 #ifdef KINETISK
   if (_pspi->pinIsChipSelect(_cs, _dc)) {
     pcs_data = _pspi->setCS(_cs);
@@ -2682,7 +2687,6 @@ FLASHMEM void ILI9341_t3n::begin(uint32_t spi_clock, uint32_t spi_clock_read) {
   }
 #elif defined(__IMXRT1052__) || defined(__IMXRT1062__) // Teensy 4.x
   // Serial.println("   T4 setup CS/DC"); Serial.flush();
-  _shared_spi_status[_spi_num]._pending_rx_count = 0; // Make sure it is zero if we we do a second begin...
   _csport = portOutputRegister(_cs);
   _cspinmask = digitalPinToBitMask(_cs);
   pinMode(_cs, OUTPUT);
