@@ -1720,21 +1720,21 @@ if (_miso == 0xff)  return 0; // dont have miso pin
   maybeUpdateTCR(_tcr_dc_assert | LPSPI_TCR_FRAMESZ(7) | LPSPI_TCR_CONT);
   // BUGBUG - maybe update does not hold CONT if we are handling DC as IO pin... 
   // so see if hacking it helps...
-  _pimxrt_spi->TCR = _spi_tcr_current | LPSPI_TCR_CONT;
+  _pimxrt_spi->TCR = _shared_spi_status[_spi_num]._spi_tcr_current | LPSPI_TCR_CONT;
 
   _pimxrt_spi->TDR = 0x45; // send command
-  pending_rx_count++; //
+  _shared_spi_status[_spi_num]._pending_rx_count++; //
   while (!(_pimxrt_spi->SR & LPSPI_SR_WCF)) ; // wait until word complete
   delayMicroseconds(3);
-  _pimxrt_spi->TCR = _spi_tcr_current;
+  _pimxrt_spi->TCR = _shared_spi_status[_spi_num]._spi_tcr_current;
   maybeUpdateTCR(_tcr_dc_not_assert | LPSPI_TCR_FRAMESZ(7));
   _pimxrt_spi->TDR = 0;
-  pending_rx_count++; //
+  _shared_spi_status[_spi_num]._pending_rx_count++; //
   maybeUpdateTCR(_tcr_dc_not_assert | LPSPI_TCR_FRAMESZ(7) );
   _pimxrt_spi->TDR = 0;
-  pending_rx_count++; //
+  _shared_spi_status[_spi_num]._pending_rx_count++; //
 //  _pimxrt_spi->TDR = 0;
-//  pending_rx_count++; //
+//  _shared_spi_status[_spi_num]._pending_rx_count++; //
 
   uint16_t line = waitTransmitCompleteReturnLast();
   endSPITransaction();
@@ -2682,12 +2682,12 @@ FLASHMEM void ILI9341_t3n::begin(uint32_t spi_clock, uint32_t spi_clock_read) {
   }
 #elif defined(__IMXRT1052__) || defined(__IMXRT1062__) // Teensy 4.x
   // Serial.println("   T4 setup CS/DC"); Serial.flush();
-  pending_rx_count = 0; // Make sure it is zero if we we do a second begin...
+  _shared_spi_status[_spi_num]._pending_rx_count = 0; // Make sure it is zero if we we do a second begin...
   _csport = portOutputRegister(_cs);
   _cspinmask = digitalPinToBitMask(_cs);
   pinMode(_cs, OUTPUT);
   DIRECT_WRITE_HIGH(_csport, _cspinmask);
-  _spi_tcr_current = _pimxrt_spi->TCR; // get the current TCR value
+  _shared_spi_status[_spi_num]._spi_tcr_current = _pimxrt_spi->TCR; // get the current TCR value
 
   // TODO:  Need to setup DC to actually work.
   if (_pspi->pinIsChipSelect(_dc)) {
@@ -5245,8 +5245,8 @@ void ILI9341_t3n::waitFifoNotFull(void) {
   do {
     if ((_pimxrt_spi->RSR & LPSPI_RSR_RXEMPTY) == 0) {
       tmp = _pimxrt_spi->RDR; // Read any pending RX bytes in
-      if (pending_rx_count)
-        pending_rx_count--; // decrement count of bytes still levt
+      if (_shared_spi_status[_spi_num]._pending_rx_count)
+        _shared_spi_status[_spi_num]._pending_rx_count--; // decrement count of bytes still levt
     }
   } while ((_pimxrt_spi->SR & LPSPI_SR_TDF) == 0);
 }
@@ -5255,8 +5255,8 @@ void ILI9341_t3n::waitFifoEmpty(void) {
   do {
     if ((_pimxrt_spi->RSR & LPSPI_RSR_RXEMPTY) == 0) {
       tmp = _pimxrt_spi->RDR; // Read any pending RX bytes in
-      if (pending_rx_count)
-        pending_rx_count--; // decrement count of bytes still levt
+      if (_shared_spi_status[_spi_num]._pending_rx_count)
+        _shared_spi_status[_spi_num]._pending_rx_count--; // decrement count of bytes still levt
     }
   } while ((_pimxrt_spi->SR & LPSPI_SR_TCF) == 0);
 }
@@ -5264,10 +5264,10 @@ void ILI9341_t3n::waitTransmitComplete(void) {
   uint32_t tmp __attribute__((unused));
   //    digitalWriteFast(2, HIGH);
 
-  while (pending_rx_count) {
+  while (_shared_spi_status[_spi_num]._pending_rx_count) {
     if ((_pimxrt_spi->RSR & LPSPI_RSR_RXEMPTY) == 0) {
       tmp = _pimxrt_spi->RDR; // Read any pending RX bytes in
-      pending_rx_count--;     // decrement count of bytes still levt
+      _shared_spi_status[_spi_num]._pending_rx_count--;     // decrement count of bytes still levt
     }
   }
   _pimxrt_spi->CR = LPSPI_CR_MEN | LPSPI_CR_RRF; // Clear RX FIFO
@@ -5278,10 +5278,10 @@ uint16_t ILI9341_t3n::waitTransmitCompleteReturnLast() {
   uint32_t val=0;
   //    digitalWriteFast(2, HIGH);
 
-  while (pending_rx_count) {
+  while (_shared_spi_status[_spi_num]._pending_rx_count) {
     if ((_pimxrt_spi->RSR & LPSPI_RSR_RXEMPTY) == 0) {
       val = _pimxrt_spi->RDR; // Read any pending RX bytes in
-      pending_rx_count--;     // decrement count of bytes still levt
+      _shared_spi_status[_spi_num]._pending_rx_count--;     // decrement count of bytes still levt
     }
   }
   _pimxrt_spi->CR = LPSPI_CR_MEN | LPSPI_CR_RRF; // Clear RX FIFO
