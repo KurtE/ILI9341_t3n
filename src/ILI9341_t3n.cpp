@@ -165,6 +165,7 @@ void ILI9341_t3n::process_dma_interrupt(void) {
     (*_frame_complete_callback)();
 // See if we should do call back or not...
 #elif defined(__IMXRT1052__) || defined(__IMXRT1062__) // Teensy 4.x
+  DMAChannel& _dmatx = *_pDMAtx;
 // T4
 #ifdef DEBUG_ASYNC_UPDATE
   static uint8_t print_count;
@@ -508,6 +509,20 @@ void dumpDMA_TCD(DMABaseClass *dmabc, const char *psz_title) {
 #ifdef ENABLE_ILI9341_FRAMEBUFFER
 //==============================================
 #ifdef ENABLE_ILI9341_FRAMEBUFFER
+
+#if defined(__IMXRT1052__) || defined(__IMXRT1062__) // Teensy 4.x
+void ILI9341_t3n::_attachInterrupt(DMAChannel& _dmatx)
+{
+    if (_spi_num == 0)
+      _dmatx.attachInterrupt(dmaInterrupt);
+    else if (_spi_num == 1)
+      _dmatx.attachInterrupt(dmaInterrupt1);
+    else
+      _dmatx.attachInterrupt(dmaInterrupt2);
+}
+#endif // T4.x
+
+
 void ILI9341_t3n::initDMASettings(void) {
   // Serial.printf("initDMASettings called %d\n", _dma_state);
   if (_dma_state & ILI9341_DMA_INIT) { // should test for init, but...
@@ -611,18 +626,16 @@ void ILI9341_t3n::initDMASettings(void) {
 #ifdef DEBUG_ASYNC_LEDS
     digitalWriteFast(DEBUG_PIN_4, !digitalReadFast(DEBUG_PIN_4));
 #endif
+    DMAChannel& _dmatx = _shared_spi_status[_spi_num].DMAch;
+    _pDMAtx = &_dmatx;
     _dmatx = _dmasettings[0];
-    _dmatx.begin(true);
+    if (nullptr == _dmatx.TCD)
+      _dmatx.begin(true);
     _dmatx.triggerAtHardwareEvent(dmaTXevent);
 #ifdef DEBUG_ASYNC_LEDS
     digitalWriteFast(DEBUG_PIN_4, !digitalReadFast(DEBUG_PIN_4));
 #endif
-    if (_spi_num == 0)
-      _dmatx.attachInterrupt(dmaInterrupt);
-    else if (_spi_num == 1)
-      _dmatx.attachInterrupt(dmaInterrupt1);
-    else
-      _dmatx.attachInterrupt(dmaInterrupt2);
+    _attachInterrupt(_dmatx);
   }
 #ifdef DEBUG_ASYNC_LEDS
   digitalWriteFast(DEBUG_PIN_4, !digitalReadFast(DEBUG_PIN_4));
@@ -809,6 +822,7 @@ bool ILI9341_t3n::updateScreenAsync(
   _pimxrt_spi->DER = LPSPI_DER_TDDE;
   _pimxrt_spi->SR = 0x3f00; // clear out all of the other status...
 
+  DMAChannel& _dmatx = *_pDMAtx;
   _dmatx.triggerAtHardwareEvent(_spi_hardware->tx_dma_channel);
 
   _dmatx = _dmasettings[0];
@@ -816,6 +830,7 @@ bool ILI9341_t3n::updateScreenAsync(
   digitalWriteFast(DEBUG_PIN_4, !digitalReadFast(DEBUG_PIN_4));
 #endif
 
+  _attachInterrupt(_dmatx); // another screen may have hijacked it
   _dmatx.begin(false);
   _dmatx.enable();
 
@@ -5273,6 +5288,8 @@ void ILI9341_t3n::waitTransmitComplete(void) {
       tmp = _pimxrt_spi->RDR; // Read any pending RX bytes in
       _shared_spi_status[_spi_num]._pending_rx_count--;     // decrement count of bytes still levt
     }
+//    else
+//      _shared_spi_status[_spi_num]._pending_rx_count--; // do it anyway...
   }
   _pimxrt_spi->CR = LPSPI_CR_MEN | LPSPI_CR_RRF; // Clear RX FIFO
   //    digitalWriteFast(2, LOW);
@@ -5287,6 +5304,8 @@ uint16_t ILI9341_t3n::waitTransmitCompleteReturnLast() {
       val = _pimxrt_spi->RDR; // Read any pending RX bytes in
       _shared_spi_status[_spi_num]._pending_rx_count--;     // decrement count of bytes still levt
     }
+//    else
+//      _shared_spi_status[_spi_num]._pending_rx_count--; // do it anyway...
   }
   _pimxrt_spi->CR = LPSPI_CR_MEN | LPSPI_CR_RRF; // Clear RX FIFO
   return val;

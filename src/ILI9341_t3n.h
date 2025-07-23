@@ -507,9 +507,9 @@ public:
   // added support to use optional Frame buffer
   enum {
     ILI9341_DMA_INIT = 0x01,
-    ILI9341_DMA_EVER_INIT = 0x08,
+    ILI9341_DMA_EVER_INIT = 0x40, // 0x08,
     ILI9341_DMA_CONT = 0x02,
-    ILI9341_DMA_FINISH = 0x04,
+    //ILI9341_DMA_FINISH = 0x04,
     ILI9341_DMA_ACTIVE = 0x80
   };
   void setFrameBuffer(uint16_t *frame_buffer);
@@ -700,13 +700,14 @@ protected:
 
   static const uint32_t _count_pixels = ILI9341_TFTWIDTH * ILI9341_TFTHEIGHT;
   DMASetting _dmasettings[3];
-  DMAChannel _dmatx;
+  DMAChannel* _pDMAtx{nullptr};
   volatile uint32_t _dma_pixel_index = 0;
   uint16_t _dma_buffer_size; // the actual size we are using <= DMA_BUFFER_SIZE;
   uint16_t _dma_cnt_sub_frames_per_frame;
   uint32_t _spi_fcr_save; // save away previous FCR register value
   static void dmaInterrupt1(void);
   static void dmaInterrupt2(void);
+  void _attachInterrupt(DMAChannel&);
 #elif defined(__MK64FX512__)
   // T3.5 - had issues scatter/gather so do just use channels/interrupts
   // and update and continue
