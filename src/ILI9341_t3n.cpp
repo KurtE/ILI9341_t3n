@@ -83,7 +83,7 @@ DMAChannel ILI9341_t3n::_dmatx;
 DMAChannel ILI9341_t3n::_dmarx;
 uint16_t ILI9341_t3n::_dma_count_remaining;
 uint16_t ILI9341_t3n::_dma_write_size_words;
-volatile short _dma_dummy_rx;
+volatile short _dma_dummy_rx __attribute__((weak));
 #endif
 
 #if defined(__IMXRT1052__) || defined(__IMXRT1062__) // Teensy 4.x
@@ -2674,13 +2674,8 @@ FLASHMEM void ILI9341_t3n::begin(uint32_t spi_clock, uint32_t spi_clock_read) {
   uint32_t *pa = (uint32_t *)((void *)_pspi);
   _spi_hardware = (SPIClass::SPI_Hardware_t *)(void *)pa[1];
 
-  if (!_shared_spi_status[_spi_num]._begin_done)
-  {
-    _pspi->begin();
-    _shared_spi_status[_spi_num]._begin_done = true;
-    _shared_spi_status[_spi_num]._pending_rx_count = 0;
-  }
 #ifdef KINETISK
+  _pspi->begin();
   if (_pspi->pinIsChipSelect(_cs, _dc)) {
     pcs_data = _pspi->setCS(_cs);
     pcs_command = pcs_data | _pspi->setCS(_dc);
@@ -2701,6 +2696,12 @@ FLASHMEM void ILI9341_t3n::begin(uint32_t spi_clock, uint32_t spi_clock_read) {
     }
   }
 #elif defined(__IMXRT1052__) || defined(__IMXRT1062__) // Teensy 4.x
+  if (!_shared_spi_status[_spi_num]._begin_done)
+  {
+    _pspi->begin();
+    _shared_spi_status[_spi_num]._begin_done = true;
+    _shared_spi_status[_spi_num]._pending_rx_count = 0;
+  }
   // Serial.println("   T4 setup CS/DC"); Serial.flush();
   _csport = portOutputRegister(_cs);
   _cspinmask = digitalPinToBitMask(_cs);
@@ -2731,6 +2732,7 @@ FLASHMEM void ILI9341_t3n::begin(uint32_t spi_clock, uint32_t spi_clock_read) {
 
 #else
   // TLC
+  _pspi->begin();
   pcs_data = 0;
   pcs_command = 0;
   pinMode(_cs, OUTPUT);
