@@ -133,6 +133,19 @@ unlike some other libraries.  Likewise it is setup to hopefully work with severa
 to try to match which display library you are using. 
 
 
+Co-existence with other display types
+----
+This driver attempts to co-exist with other ILI9341, GC9A01A 
+and ST77xx displays sharing the same SPI bus and DMA channel, 
+without impacting the speed optimisations too badly.
+
+Each display can share all pins _except_ the /CS pin. To share the
+/RST pin it should be specified as not connected (`-1`) for all displays,
+and then driven by user code.
+
+User code must of course ensure that accesses to different displays do not
+overlap. This is usually only an issue with async updates, as updates that write directly to a display will block until complete. For small displays, or a Teensy 4.x with PSRAM, multiple frame buffers can be used and written to while another frame buffer is being updated to its display asynchronously.
+
 
 Discussion regarding this optimized version:
 ==========================
@@ -144,12 +157,12 @@ addition are setup to support the displays that are sold by PJRC, which include:
 	http://pjrc.com/store/display_ili9341.html
 	http://pjrc.com/store/display_ili9341_touch.html
 
-Note: this library like the ILI9341_t3 library which it is derived from no longer  require any of the Adafruit libraries, such as their Adafruit_ILI9341 and Adafruit_GFX libraries APIS are based on.
+Note: this library like the ILI9341_t3 library which it is derived from no longer  require any of the Adafruit libraries, such as their Adafruit_ILI9341 and Adafruit_GFX libraries APIS are based on, but...
 
 Adafruit library info
 =======================
 
-But as this code is based of of their work, their original information is included below:
+...as this code is based of of their work, their original information is included below:
 
 ------------------------------------------
 
