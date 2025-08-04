@@ -627,10 +627,10 @@ void ILI9341_t3n::initDMASettings(void) {
     digitalWriteFast(DEBUG_PIN_4, !digitalReadFast(DEBUG_PIN_4));
 #endif
     DMAChannel& _dmatx = _shared_spi_status[_spi_num].DMAch;
-    _pDMAtx = &_dmatx;
-    _dmatx = _dmasettings[0];
     if (nullptr == _dmatx.TCD)
       _dmatx.begin(true);
+    _pDMAtx = &_dmatx;
+    _dmatx = _dmasettings[0];
     _dmatx.triggerAtHardwareEvent(dmaTXevent);
 #ifdef DEBUG_ASYNC_LEDS
     digitalWriteFast(DEBUG_PIN_4, !digitalReadFast(DEBUG_PIN_4));
