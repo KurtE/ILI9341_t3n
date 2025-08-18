@@ -22,7 +22,7 @@ This library was originally created to be able to test out SPI on the newer Teen
 also adapted to allow this on the Teensy LC as well. 
 
 
-Constructor and begin
+Constructor and begin()
 ----
 This library was developed to allow you to use any of the SPI busses on a Teensy 3.x or 4.x processor. 
 It detects this by looking at which pins were specified on the constructor. 
@@ -32,15 +32,15 @@ ILI9341_t3n(uint8_t _CS, uint8_t _DC, uint8_t _RST = 255, uint8_t _MOSI = 11,
             uint8_t _SCLK = 13, uint8_t _MISO = 12);
 ```
 
-When the begin method is called.  The parameters passed in for MISO/MOSI/SCK are checked to see if they are valid 
-for the SPI object.  If so SPI is used.  If not and the board type has SPI1, it will check to 
-see if those pins are valid for SPI1 and if so use SPI1, if not if there is an SPI2, it will check...
+When the begin method is called the parameters passed in for MISO/MOSI/SCK are checked to see if they are valid 
+for the SPI object.  If so SPI is used; if not, and the board type has SPI1, it will check to 
+see if those pins are valid for SPI1 and if so use SPI1; if not and there is an SPI2, it will check...
 ```c++
 void begin(uint32_t spi_clock = ILI9341_SPICLOCK,
-            uint32_t spi_clock_read = ILI9341_SPICLOCK_READ);
+           uint32_t spi_clock_read = ILI9341_SPICLOCK_READ);
 ```
 
-In addition, On Teensy 3.x boards, this code allows the ILI9341 code to work with only 
+In addition, on Teensy 3.x boards, this code allows the ILI9341 code to work with only 
 one hardware CS pin available, which in this case must be used for the DC pin.  
 This is very useful to support SPI1 on the T3.5 and T3.6 boards which only
 have one CS pin unless you use some form of adapter to use the SPI pins that are on the SDCARD.   
@@ -51,32 +51,32 @@ get a modest speed increase if hardware CS pin is used for the DC signal.
 
 Frame Buffer
 ------------
-The teensy 3.6 and now 3.5 and now the T4.x have a lot more memory than previous Teensy processors, so on these boards, 
+The Teensy 3.5, 3.6 and now the T4.x have a lot more memory than previous Teensy processors, so on these boards, 
 I borrowed some ideas from the ILI9341_t3DMA library and added code to be able to use a logical Frame Buffer.  
-To enable this I added a couple of API's 
+To enable this I added some APIs:
 ```c++
-uint8_t useFrameBuffer(boolean b) // if b non-zero it will allocate memory and start using
-void	freeFrameBuffer(void) // Will free up the memory that was used.
-void	updateScreen(void); // Will update the screen with all of your updates...
-void	setFrameBuffer(uint16_t *frame_buffer); // Now have the ability allocate the frame buffer and pass it in, to avoid use of malloc
+uint8_t useFrameBuffer(boolean b) // if b true it will allocate memory and start using it
+void	freeFrameBuffer(void) // Frees up the memory that was used.
+void	updateScreen(void); // Will update the screen with all of your changes...
+void	setFrameBuffer(uint16_t *frame_buffer); // Now have the ability to allocate the frame buffer and pass it in, to avoid use of malloc()
 ```
 Asynchronous Update support (Frame buffer)
 ------------------------
 
 The code now has support to use DMA for Asynchronous updates of the screen.  You can choose to do the updates once or in continuous mode.  Note: I mainly use the 
-oneshot as I prefer more control on when the screen updates which helps to minimize things like flashing and tearing. 
-Some of the New methods for this include: 
+one-shot as I prefer more control on when the screen updates which helps to minimize things like flashing and tearing. 
+Some of the new methods for this include: 
 
 ```c++
-bool	updateScreenAsync(bool update_cont = false); - Starts an update either one shot or continuous
-void	waitUpdateAsyncComplete(void);  - Wait for any active update to complete
-void	endUpdateAsync();			 - Turn of the continuous mode.
-boolean	asyncUpdateActive(void)      - Lets you know if an async operation is still active
+bool updateScreenAsync(bool update_cont = false); // Starts an update, either one-shot or continuous
+void waitUpdateAsyncComplete(void);  // Wait for any active update to complete
+void endUpdateAsync();			     // Turn off the continuous mode.
+bool asyncUpdateActive(void)         // Lets you know if an async operation is still active
 ```
 
 Additional APIs
 ---------------
-In addition, this library now has some of the API's and functionality that has been requested in a pull request.  In particular it now supports, the ability to set a clipping rectangle as well as setting an origin that is used with the drawing primitives.   These new API's include:
+In addition, this library now has some of the APIs and functionality that has been requested in a pull request.  In particular it now supports, the ability to set a clipping rectangle as well as setting an origin that is used with the drawing primitives.   These new API's include:
 ```c++
 void setOrigin(int16_t x = 0, int16_t y = 0); 
 void getOrigin(int16_t* x, int16_t* y);
@@ -155,16 +155,16 @@ Discussion regarding this optimized version:
 http://forum.pjrc.com/threads/26305-Highly-optimized-ILI9341-%28320x240-TFT-color-display%29-library
 
 This version of the library supports the Adafruit displays that use the ILI9341 displays, but in
-addition are setup to support the displays that are sold by PJRC, which include:
+addition are set up to support the displays that are sold by PJRC, which include:
 	http://pjrc.com/store/display_ili9341.html
 	http://pjrc.com/store/display_ili9341_touch.html
 
-Note: this library like the ILI9341_t3 library which it is derived from no longer  require any of the Adafruit libraries, such as their Adafruit_ILI9341 and Adafruit_GFX libraries APIS are based on, but...
+Note: this library, like the ILI9341_t3 library which it is derived from, no longer requires any of the Adafruit libraries, such as their Adafruit_ILI9341 and Adafruit_GFX libraries APIS are based on, but...
 
 Adafruit library info
 =======================
 
-...as this code is based of of their work, their original information is included below:
+...as this code is based on their work, their original information is included below:
 
 ------------------------------------------
 
