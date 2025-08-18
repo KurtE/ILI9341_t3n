@@ -27,17 +27,17 @@ Constructor and begin
 This library was developed to allow you to use any of the SPI busses on a Teensy 3.x or 4.x processor. 
 It detects this by looking at which pins were specified on the constructor. 
 
-```
-  ILI9341_t3n(uint8_t _CS, uint8_t _DC, uint8_t _RST = 255, uint8_t _MOSI = 11,
-              uint8_t _SCLK = 13, uint8_t _MISO = 12);
+```c++
+ILI9341_t3n(uint8_t _CS, uint8_t _DC, uint8_t _RST = 255, uint8_t _MOSI = 11,
+            uint8_t _SCLK = 13, uint8_t _MISO = 12);
 ```
 
 When the begin method is called.  The parameters passed in for MISO/MOSI/SCK are checked to see if they are valid 
 for the SPI object.  If so SPI is used.  If not and the board type has SPI1, it will check to 
 see if those pins are valid for SPI1 and if so use SPI1, if not if there is an SPI2, it will check...
-```
-  void begin(uint32_t spi_clock = ILI9341_SPICLOCK,
-             uint32_t spi_clock_read = ILI9341_SPICLOCK_READ);
+```c++
+void begin(uint32_t spi_clock = ILI9341_SPICLOCK,
+            uint32_t spi_clock_read = ILI9341_SPICLOCK_READ);
 ```
 
 In addition, On Teensy 3.x boards, this code allows the ILI9341 code to work with only 
@@ -55,10 +55,10 @@ The teensy 3.6 and now 3.5 and now the T4.x have a lot more memory than previous
 I borrowed some ideas from the ILI9341_t3DMA library and added code to be able to use a logical Frame Buffer.  
 To enable this I added a couple of API's 
 ```c++
-    uint8_t useFrameBuffer(boolean b) - if b non-zero it will allocate memory and start using
-    void	freeFrameBuffer(void) - Will free up the memory that was used.
-    void	updateScreen(void); - Will update the screen with all of your updates...
-	void	setFrameBuffer(uint16_t *frame_buffer); - Now have the ability allocate the frame buffer and pass it in, to avoid use of malloc
+uint8_t useFrameBuffer(boolean b) // if b non-zero it will allocate memory and start using
+void	freeFrameBuffer(void) // Will free up the memory that was used.
+void	updateScreen(void); // Will update the screen with all of your updates...
+void	setFrameBuffer(uint16_t *frame_buffer); // Now have the ability allocate the frame buffer and pass it in, to avoid use of malloc
 ```
 Asynchronous Update support (Frame buffer)
 ------------------------
@@ -68,45 +68,47 @@ oneshot as I prefer more control on when the screen updates which helps to minim
 Some of the New methods for this include: 
 
 ```c++
-	bool	updateScreenAsync(bool update_cont = false); - Starts an update either one shot or continuous
-	void	waitUpdateAsyncComplete(void);  - Wait for any active update to complete
-	void	endUpdateAsync();			 - Turn of the continuous mode.
-	boolean	asyncUpdateActive(void)      - Lets you know if an async operation is still active
+bool	updateScreenAsync(bool update_cont = false); - Starts an update either one shot or continuous
+void	waitUpdateAsyncComplete(void);  - Wait for any active update to complete
+void	endUpdateAsync();			 - Turn of the continuous mode.
+boolean	asyncUpdateActive(void)      - Lets you know if an async operation is still active
 ```
 
 Additional APIs
 ---------------
 In addition, this library now has some of the API's and functionality that has been requested in a pull request.  In particular it now supports, the ability to set a clipping rectangle as well as setting an origin that is used with the drawing primitives.   These new API's include:
 ```c++
-	void setOrigin(int16_t x = 0, int16_t y = 0); 
-	void getOrigin(int16_t* x, int16_t* y);
-	void setClipRect(int16_t x1, int16_t y1, int16_t w, int16_t h); 
-	void setClipRect();
+void setOrigin(int16_t x = 0, int16_t y = 0); 
+void getOrigin(int16_t* x, int16_t* y);
+void setClipRect(int16_t x1, int16_t y1, int16_t w, int16_t h); 
+void setClipRect();
 ```
 
 This library borrows some concepts and functionality from other libraries as well, such as: from the TFT_ILI9341_ESP, https://github.com/Bodmer/TFT_ILI9341_ESP, for additional functions:
 ```c++
-    int16_t  drawNumber(long long_num,int poX, int poY);
-    int16_t  drawFloat(float floatNumber,int decimal,int poX, int poY);   
-    int16_t drawString(const String& string, int poX, int poY);
-    int16_t drawString(char string[], int16_t len, int poX, int poY);
-    void setTextDatum(uint8_t datum);
+int16_t  drawNumber(long long_num,int poX, int poY);
+int16_t  drawFloat(float floatNumber,int decimal,int poX, int poY);   
+int16_t drawString(const String& string, int poX, int poY);
+int16_t drawString(char string[], int16_t len, int poX, int poY);
+void setTextDatum(uint8_t datum);
 ```
 
-In addition, scrolling text has been added using appropriate function from, https://github.com/vitormhenrique/ILI9341_t3:
+In addition, scrolling text has been added using appropriate function from, https://github.com/vitormhenrique/ILI9341_t3.
+These functions _require_ the ability to read screen data, so the MISO pin must be connected and functional.
 ```c++
-    void enableScroll(void);
-    void resetScrollBackgroundColor(uint16_t color);
-    void setScrollTextArea(int16_t x, int16_t y, int16_t w, int16_t h);
-    void setScrollBackgroundColor(uint16_t color);
-    void scrollTextArea(uint8_t scrollSize);
-    void resetScrollBackgroundColor(uint16_t color);
+void enableScroll(void);
+void resetScrollBackgroundColor(uint16_t color);
+void setScrollTextArea(int16_t x, int16_t y, int16_t w, int16_t h);
+void setScrollBackgroundColor(uint16_t color); // area is filled
+void scrollTextArea(int16_t scrollSize);
+void resetScrollBackgroundColor(uint16_t color); // just sets colour
 ```
+A negative parameter for `scrollTextArea` scrolls the area down the screen (i.e. in the opposite direction to normal text scrolling).
 
 Some other member functions have been added by request, that have not been fully tested, nor will they work with the
 frame buffer.
 ```c++
-	void setScrollMargins(uint16_t top, uint16_t bottom);  // Note this is now also member of Adafruit library
+void setScrollMargins(uint16_t top, uint16_t bottom);  // Note this is now also member of Adafruit library
 ```
 
 Font Support
@@ -120,7 +122,7 @@ The text output support also has been exteneded in a way similar to the RA8875 l
 
 The member function setCursor has been extended in a couple of ways:
 ```c++
-	void setCursor(int16_t x, int16_t y, bool autoCenter=false);
+void setCursor(int16_t x, int16_t y, bool autoCenter=false);
 ```
 if the autoCenter is true, the next text output will be centered at the given x, y location.  Note: this is only true for the NEXT output.  
 
