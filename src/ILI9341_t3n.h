@@ -501,7 +501,7 @@ public:
   void setScrollBackgroundColor(uint16_t color);
   void enableScroll(void);
   void disableScroll(void);
-  void scrollTextArea(uint8_t scrollSize);
+  void scrollTextArea(int16_t scrollSize);
   void resetScrollBackgroundColor(uint16_t color);
 
   // added support to use optional Frame buffer
