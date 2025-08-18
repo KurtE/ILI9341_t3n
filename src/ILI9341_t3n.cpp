@@ -5165,14 +5165,36 @@ int16_t ILI9341_t3n::drawString(const char string[], int16_t len, int poX, int p
   return sumX;
 }
 
-void ILI9341_t3n::scrollTextArea(uint8_t scrollSize) {
+void ILI9341_t3n::scrollTextArea(int16_t scrollSize) {
   uint16_t awColors[scroll_width];
-  for (int y = scroll_y + scrollSize; y < (scroll_y + scroll_height); y++) {
-    readRect(scroll_x, y, scroll_width, 1, awColors);
-    writeRect(scroll_x, y - scrollSize, scroll_width, 1, awColors);
+  if (scrollSize >= 0)
+  {
+    int y = scroll_y + scrollSize;
+    int16_t ssz = scroll_height-scrollSize;
+    while (ssz > 0) {
+      readRect(scroll_x, y, scroll_width, 1, awColors);
+      writeRect(scroll_x, y - scrollSize, scroll_width, 1, awColors);
+      y++;    
+      ssz--;  
+    }
+    fillRect(scroll_x, (scroll_y + scroll_height) - scrollSize, 
+            scroll_width, scrollSize, 
+            scrollbgcolor);
   }
-  fillRect(scroll_x, (scroll_y + scroll_height) - scrollSize, scroll_width,
-           scrollSize, scrollbgcolor);
+  else
+  {
+    int y = scroll_y+scroll_height+scrollSize;
+    int16_t ssz = scroll_height+scrollSize;
+    while (ssz > 0) {
+      readRect(scroll_x, y, scroll_width, 1, awColors);
+      writeRect(scroll_x, y - scrollSize, scroll_width, 1, awColors);
+      y--;    
+      ssz--;  
+    }
+    fillRect(scroll_x, scroll_y, 
+             scroll_width, -scrollSize, 
+             scrollbgcolor);
+  }
 }
 
 void ILI9341_t3n::setScrollTextArea(int16_t x, int16_t y, int16_t w,

@@ -29,57 +29,142 @@ ILI9341_t3n tft = ILI9341_t3n(ILI9341_CS, ILI9341_DC, ILI9341_RST);
 // If using the breakout, change pins as desired
 //Adafruit_ILI9341 tft = Adafruit_ILI9341(TFT_CS, TFT_DC, TFT_MOSI, TFT_CLK, TFT_RST, TFT_MISO);
 
+
+/*********************************************************************************
+ * MISO needs to be connected and working for this example
+ * to work properly, so provide a way to do that
+ */
+template <class TFTdrv>
+class checkMISO
+{
+    TFTdrv& tft;
+    bool miso_ok{false};
+  public:
+    checkMISO(TFTdrv& _tft) 
+      : tft(_tft)
+      {}
+
+    bool isOK(uint16_t x=0, uint16_t y=0)
+    {
+      uint16_t ref[]{ILI9341_RED, ILI9341_GREEN, ILI9341_BLUE, ILI9341_WHITE};
+      uint16_t chk[4]{0,0,0,0};
+      tft.writeRect(x,y,2,2,ref);
+      tft.readRect(x,y,2,2,chk);
+
+      return 0 == memcmp(ref,chk,sizeof ref);
+    }      
+};
+
+void printMISOcheck(void)
+{
+  checkMISO<ILI9341_t3n> checker(tft);
+  Serial.printf("Screen %s functional MISO\n",checker.isOK()?"has":"does NOT have");
+}
+//********************************************************************************
+
+
 void setup() {
 
   Serial.begin(9600);
-
-
  
   tft.begin();
   tft.setRotation(3);
-
-  tft.fillScreen(ILI9341_BLACK);
-  while (!Serial) ; 
-  tft.setTextColor(ILI9341_WHITE);  tft.setTextSize(1);
   tft.enableScroll();
+
+  tft.fillScreen(ILI9341_NAVY);
+  tft.setTextSize(2);
+  tft.setTextColor(ILI9341_WHITE);
+  tft.setCursor(20,120-8);
+  tft.print("Waiting for");
+  tft.setCursor(20,120+8);
+  tft.print("serial connection...");
+  while (!Serial) // wait for Serial connection
+    ; 
+  printMISOcheck();
+}
+
+
+void scrollCS1(const ILI9341_t3_font_t& font, bool reverse=false)
+{
+  tft.fillScreen(ILI9341_BLACK);
+  tft.setTextColor(ILI9341_WHITE);  tft.setTextSize(1);
   tft.setScrollTextArea(0,0,120,240);
   tft.setScrollBackgroundColor(ILI9341_GREEN);
 
   tft.setCursor(180, 100);
-
-  tft.setFont(ComicSansMS_12);
+  tft.setFont(font);
   tft.print("Fixed text");
 
-  tft.setCursor(0, 0);
 
   tft.setTextColor(ILI9341_BLACK); 
 
-  for(int i=0;i<20;i++){
-    tft.print("  this is line ");
-    tft.println(i);
-    delay(100);
+  if (reverse)
+  {
+    unsigned char line_space = font.line_space;
+    int ypos = 240-line_space+4;
+    for(int i=20;i>=0;i--){
+      tft.setCursor(0, ypos);
+      tft.print("  this is line ");
+      tft.print(i);
+      delay(100);
+      if (ypos >= line_space)
+        ypos -= line_space;
+      else        
+        tft.scrollTextArea(-line_space);     
+    }
   }
-
-  tft.fillScreen(ILI9341_BLACK);
-  tft.setScrollTextArea(40,50,120,120);
-  tft.setScrollBackgroundColor(ILI9341_GREEN);
-  tft.setFont(ComicSansMS_10);
-
-  tft.setTextSize(1);
-  tft.setCursor(40, 50);
-
-  for(int i=0;i<20;i++){
-    tft.print("  this is line ");
-    tft.println(i);
-    delay(500);
+  else
+  {
+    tft.setCursor(0, 2);
+    for(int i=0;i<=20;i++){
+      tft.print("  this is line ");
+      tft.println(i);
+      delay(100);
+    }
   }
-
-
 }
 
 
+void scrollCS2(const ILI9341_t3_font_t& font, bool reverse=false)
+{
+  tft.fillScreen(ILI9341_BLACK);
+  tft.setScrollTextArea(40,50,120,120);
+  tft.setScrollBackgroundColor(ILI9341_GREEN);
+  tft.setFont(font);
 
-void loop(void) {
+  tft.setTextSize(1);
+  
+  if (reverse)
+  {
+    unsigned char line_space = font.line_space;
+    int ypos = 50+120-line_space-2;
+    for(int i=20;i>=0;i--){
+      tft.setCursor(40, ypos);
+      tft.print("  this is line ");
+      tft.print(i);
+      delay(500);
+      if (ypos-50 >= line_space)
+        ypos -= line_space;
+      else        
+        tft.scrollTextArea(-line_space);     
+    }
+  }
+  else
+  {
+    tft.setCursor(40, 52);  
+    for(int i=0;i<=20;i++){
+      tft.print("  this is line ");
+      tft.println(i);
+      delay(500);
+    }
+  }
+}  
 
 
+void loop(void) 
+{
+  scrollCS1(ComicSansMS_12);
+  scrollCS1(ComicSansMS_12, true);
+  scrollCS2(ComicSansMS_10);
+  scrollCS2(ComicSansMS_10, true);
 }
