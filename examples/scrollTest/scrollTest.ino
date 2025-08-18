@@ -32,7 +32,9 @@ ILI9341_t3n tft = ILI9341_t3n(ILI9341_CS, ILI9341_DC, ILI9341_RST);
 
 /*********************************************************************************
  * MISO needs to be connected and working for this example
- * to work properly, so provide a way to do that
+ * to work properly, so provide a way to check that and tell the user
+ * the result. Implemeted as a template class, so it should be easy
+ * to transfer to any display which provides writeRect() and readRect()
  */
 template <class TFTdrv>
 class checkMISO
@@ -55,6 +57,8 @@ class checkMISO
     }      
 };
 
+
+// One way of reporting to the user - use the Serial port
 void printMISOcheck(void)
 {
   checkMISO<ILI9341_t3n> checker(tft);
