@@ -45,7 +45,7 @@ void setup() {
   tft.updateScreen();
   Serial.printf("Delta time: %u\n", micros() - start_time);
   waitUserInput();
-  tft.useFrameBuffer(fb1);
+  tft.setFrameBuffer(fb1);
   tft.fillScreen(ILI9341_GREEN);
   tft.setCursor(CENTER, CENTER);
   tft.setTextColor(ILI9341_RED);
@@ -56,7 +56,6 @@ void setup() {
   Serial.printf("Delta time: %u\n", micros() - start_time);
 
   waitUserInput();
-  tft.useFrameBuffer(fb2);
   tft.setFrameBuffer(fb2);
   tft.fillScreen(ILI9341_BLUE);
   tft.setCursor(CENTER, CENTER);
