@@ -564,7 +564,7 @@ protected:
   bool _center_x_text = false;
   bool _center_y_text = false;
   int16_t _clipx1, _clipy1, _clipx2, _clipy2;
-  int16_t _originx, _originy;
+  int16_t _originx = 0, _originy = 0;
   int16_t _displayclipx1, _displayclipy1, _displayclipx2, _displayclipy2;
   bool _invisible = false;
   bool _standard = true; // no bounding rectangle or origin set.
